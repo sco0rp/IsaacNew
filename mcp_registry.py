@@ -5,6 +5,18 @@ Leichtgewichtige MCP-nahe Registry mit lokalen Resource-/Tool-/Prompt-Handlern.
 """
 
 from typing import Dict, Any, List, Callable
+from result_contract import ensure_result_contract
+
+
+def _handler_result_contract(name: str, result: Any) -> Dict[str, Any]:
+    if isinstance(result, dict) and (
+        "output" in result or "content" in result or "error" in result or "metadata" in result
+    ):
+        return ensure_result_contract(result, source=f"mcp_registry:{name}")
+    return ensure_result_contract(
+        {"ok": True, "output": result, "metadata": {"tool": name}},
+        source=f"mcp_registry:{name}",
+    )
 
 
 class MCPRegistry:
@@ -75,11 +87,11 @@ class MCPRegistry:
             return {"ok": False, "error": f"Tool has no handler: {name}"}
         try:
             result = handler(**(arguments or {}))
-            return {"ok": True, "tool": name, "result": result}
+            return _handler_result_contract(name, result)
         except TypeError as e:
-            return {"ok": False, "tool": name, "error": f"Argument error: {e}"}
+            return ensure_result_contract({"ok": False, "error": f"Argument error: {e}", "metadata": {"tool": name}}, source=f"mcp_registry:{name}")
         except Exception as e:
-            return {"ok": False, "tool": name, "error": str(e)}
+            return ensure_result_contract({"ok": False, "error": str(e), "metadata": {"tool": name}}, source=f"mcp_registry:{name}")
 
     def read_resource(self, uri: str, **kwargs) -> Dict[str, Any]:
         res = self._resources.get(uri)

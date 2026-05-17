@@ -247,6 +247,34 @@ class TestCriticalBugs(unittest.TestCase):
         )
         self.assertEqual(intent, Intent.TRANSLATE)
 
+    def test_bug_30_detect_intent_is_narrowed_to_explicit_command_patterns(self):
+        detected = detect_intent("Kannst du den Satz bitte übersetzen?")
+        self.assertEqual(detected, Intent.CHAT)
+
+    def test_bug_31_status_classification_has_priority_over_regex_detection(self):
+        intent = self.kernel._resolve_intent_from_classification(
+            "status",
+            detect_intent("status"),
+            InteractionClass.STATUS_QUERY,
+        )
+        self.assertEqual(intent, Intent.STATUS)
+
+    def test_bug_32_tool_classification_has_priority_for_search_routing(self):
+        intent = self.kernel._resolve_intent_from_classification(
+            "Suche: Wetter Berlin",
+            detect_intent("Suche: Wetter Berlin"),
+            InteractionClass.TOOL_REQUEST,
+        )
+        self.assertEqual(intent, Intent.SEARCH)
+
+    def test_bug_33_status_classification_overrides_explicit_command_regex(self):
+        intent = self.kernel._resolve_intent_from_classification(
+            "übersetze hallo",
+            Intent.TRANSLATE,
+            InteractionClass.STATUS_QUERY,
+        )
+        self.assertEqual(intent, Intent.STATUS)
+
     def test_bug_17_executor_keeps_explicit_tool_policy_for_status_class(self):
         task = Task(
             id="t3",

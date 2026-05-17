@@ -247,6 +247,34 @@ class TestCriticalBugs(unittest.TestCase):
         )
         self.assertEqual(intent, Intent.TRANSLATE)
 
+    def test_bug_30_detect_intent_is_narrowed_to_explicit_command_patterns(self):
+        detected = detect_intent("Kannst du den Satz bitte übersetzen?")
+        self.assertEqual(detected, Intent.CHAT)
+
+    def test_bug_31_status_classification_has_priority_over_regex_detection(self):
+        intent = self.kernel._resolve_intent_from_classification(
+            "status",
+            detect_intent("status"),
+            InteractionClass.STATUS_QUERY,
+        )
+        self.assertEqual(intent, Intent.STATUS)
+
+    def test_bug_32_tool_classification_has_priority_for_search_routing(self):
+        intent = self.kernel._resolve_intent_from_classification(
+            "Suche: Wetter Berlin",
+            detect_intent("Suche: Wetter Berlin"),
+            InteractionClass.TOOL_REQUEST,
+        )
+        self.assertEqual(intent, Intent.SEARCH)
+
+    def test_bug_33_status_classification_overrides_explicit_command_regex(self):
+        intent = self.kernel._resolve_intent_from_classification(
+            "übersetze hallo",
+            Intent.TRANSLATE,
+            InteractionClass.STATUS_QUERY,
+        )
+        self.assertEqual(intent, Intent.STATUS)
+
     def test_bug_17_executor_keeps_explicit_tool_policy_for_status_class(self):
         task = Task(
             id="t3",
@@ -713,6 +741,7 @@ class TestHermesCompatibilityLayer(unittest.TestCase):
         self.adapter.mirror_tool_to_mcp(mcp, "danger_tool")
         mcp_result = mcp.invoke_tool("danger_tool", {})
         self.assertFalse(mcp_result["ok"])
+        self.assertIn("danger_tool", mcp_result["error"])
         self.assertIn("Review-ID", mcp_result["error"])
         self.assertIn("queue_id", mcp_result)
 
@@ -754,6 +783,28 @@ class TestHermesCompatibilityLayer(unittest.TestCase):
         self.assertFalse(mcp_handler_error["ok"])
         self.assertIn("boom", mcp_handler_error["error"])
 
+    def test_mcp_registry_wraps_raw_handler_payloads_in_output(self):
+        mcp = MCPRegistry()
+        mcp.register_tool("raw_list", {"description": "x"}, handler=lambda **kwargs: [1, 2, 3])
+        mcp.register_tool("raw_status", {"description": "x"}, handler=lambda **kwargs: {"ok": True, "tasks": [{"id": "t1"}]})
+
+        list_result = mcp.invoke_tool("raw_list", {})
+        self.assertTrue(list_result["ok"])
+        self.assertEqual(list_result["output"], [1, 2, 3])
+
+        status_result = mcp.invoke_tool("raw_status", {})
+        self.assertTrue(status_result["ok"])
+        self.assertEqual(status_result["output"]["tasks"][0]["id"], "t1")
+
+
+    def test_mcp_mirror_propagates_handler_failure(self):
+        self.adapter.register_tool({"name": "broken_tool", "description": "x"}, lambda payload: 1 / 0)
+        mcp = MCPRegistry()
+        self.adapter.mirror_tool_to_mcp(mcp, "broken_tool")
+        mcp_result = mcp.invoke_tool("broken_tool", {})
+        self.assertFalse(mcp_result["ok"])
+        self.assertIn("broken_tool", mcp_result["error"])
+        self.assertIn("division by zero", mcp_result["error"])
 
 
 if __name__ == '__main__':

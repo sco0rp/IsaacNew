@@ -48,6 +48,7 @@ from meaning        import get_meaning
 from values         import get_values
 from low_complexity import (
     ClassificationResult,
+    InteractionClass,
     classify_interaction_result,
     is_lightweight_local_class,
     is_low_complexity_local_input,
@@ -87,7 +88,7 @@ class Intent:
     URL_ADD     = "url_add"
 
 
-PATTERNS = [
+EXPLICIT_COMMAND_PATTERNS = [
     (Intent.SUDO_OPEN,  [r"^sudo\s+", r"^öffne tür", r"^master key"]),
     (Intent.SUDO_CLOSE, [r"^sudo close$", r"^tür schließen$"]),
     (Intent.FACT_SET,   [r"^korrektur:", r"^fakt:", r"^weiß:"]),
@@ -98,7 +99,7 @@ PATTERNS = [
     (Intent.DECOMPOSE,  [r"^atomisiere:", r"^verteile:"]),
     (Intent.CODE,       [r"^code:", r"^programmiere:", r"^schreibe.*python"]),
     (Intent.FILE,       [r"^datei:", r"^lese:", r"^schreibe.*datei"]),
-    (Intent.TRANSLATE,  [r"übersetze", r"^schrift:", r"alphabet"]),
+    (Intent.TRANSLATE,  [r"^übersetze", r"^translate", r"^schrift:"]),
     (Intent.LOGIN_ADD,  [r"^login:", r"^credential:", r"^zugangsdaten:"]),
     (Intent.URL_ADD,    [r"^url:", r"^instanz:", r"^füge.*url"]),
     (Intent.KI_STATUS,  [r"^ki status$", r"^instanzen$", r"^meinungen$"]),
@@ -110,7 +111,7 @@ PATTERNS = [
 
 def detect_intent(text: str) -> str:
     tl = text.lower().strip()
-    for intent, patterns in PATTERNS:
+    for intent, patterns in EXPLICIT_COMMAND_PATTERNS:
         for pat in patterns:
             if re.search(pat, tl):
                 return intent
@@ -206,7 +207,7 @@ class IsaacKernel:
         wissen_kontext = self.ki_dialog.als_kontext(user_input)
         timing["wissen_ms"] = round((time.perf_counter() - t_start) * 1000, 2)
 
-        # 3. Intent mit klassifikationsdominierter Korrektur
+        # 3. Intent: Klassifikation ist führend, Regex nur für explizite Kommandos
         detected_intent = detect_intent(user_input)
         intent = self._resolve_intent_from_classification(
             user_input, detected_intent, interaction_class
@@ -770,38 +771,16 @@ class IsaacKernel:
     def _resolve_intent_from_classification(
         self, user_input: str, detected_intent: str, interaction_class: str
     ) -> str:
-        if interaction_class == "STATUS_QUERY":
+        # Klassifikation ist die primäre Routing-Authority.
+        if interaction_class == InteractionClass.STATUS_QUERY:
             return Intent.STATUS
-        if interaction_class == "TOOL_REQUEST":
+        if interaction_class == InteractionClass.TOOL_REQUEST:
             return Intent.SEARCH
 
-        explicit_command_intents = {
-            Intent.SUDO_OPEN,
-            Intent.SUDO_CLOSE,
-            Intent.FACT_SET,
-            Intent.DIRECTIVE,
-            Intent.BROADCAST,
-            Intent.SPLIT,
-            Intent.PIPELINE,
-            Intent.DECOMPOSE,
-            Intent.CODE,
-            Intent.FILE,
-            Intent.TRANSLATE,
-            Intent.LOGIN_ADD,
-            Intent.URL_ADD,
-            Intent.KI_STATUS,
-            Intent.MEINUNG,
-            Intent.PAUSE,
-            Intent.RESUME,
-            Intent.CANCEL,
-        }
-        if detected_intent in explicit_command_intents:
-            if self._looks_like_explicit_command(user_input, detected_intent):
-                return detected_intent
+        # Regex-Intent bleibt nur für explizite Kommandos als Fallback aktiv.
+        if detected_intent != Intent.CHAT and self._looks_like_explicit_command(user_input, detected_intent):
+            return detected_intent
 
-        # Fragen sollen als normaler Chat laufen, solange kein Status/Tool-Signal vorliegt.
-        if "?" in (user_input or ""):
-            return Intent.CHAT
         return Intent.CHAT
 
     def _retrieve_relevant_context(

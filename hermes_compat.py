@@ -237,11 +237,14 @@ class HermesCompatibilityAdapter:
         verdict = self._permission_check(tool, ctx)
         if not verdict.allowed:
             self.audit_log.action(ctx.caller, "tool_blocked", f"{tool_name} | {verdict.reason}", level=ctx.level, erfolg=False)
-            return ToolResult(**error_result(verdict.reason, metadata={"risk": verdict.risk}, queue_id=verdict.queue_id))
+            return ToolResult(**error_result(f"{tool_name}: {verdict.reason}", metadata={"risk": verdict.risk, "tool": tool_name}, queue_id=verdict.queue_id))
 
         self.audit_log.action(ctx.caller, "tool_execute", tool_name, level=ctx.level, erfolg=True)
         result = tool.handler(ToolInput(payload), ctx)
         normalized = ensure_result_contract(result.__dict__ if isinstance(result, ToolResult) else result, source="hermes_handler")
+        normalized["metadata"].setdefault("tool", tool_name)
+        if not normalized.get("ok") and tool_name not in normalized.get("error", ""):
+            normalized["error"] = f"{tool_name}: {normalized.get('error') or 'tool_execution_failed'}"
         self.audit_log.task(ctx.task_id or "hermes-task", "tool_result", detail=tool_name, score=1.0 if normalized.get("ok") else 0.0)
         return ToolResult(**normalized)
 

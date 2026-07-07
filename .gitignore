@@ -17,3 +17,5 @@ monitor.out
 *.bak*
 whisper.cpp/
 opencode-mobile/
+trans.py
+trans.sh

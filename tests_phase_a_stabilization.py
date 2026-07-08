@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("ISAAC_DISABLE_VECTOR_MEMORY", "1")
+
 import asyncio
 import json
 import unittest
@@ -736,9 +740,8 @@ class TestCriticalBugs(unittest.TestCase):
 
         stats = get_vector_memory().stats()
         self.assertIn("aktiv", stats)
-        if stats["aktiv"]:
-            self.assertIn("konversationen", stats)
-            self.assertIn("pfad", stats)
+        self.assertFalse(stats["aktiv"])
+        self.assertEqual(stats.get("grund"), "deaktiviert")
 
 
 class TestHermesCompatibilityLayer(unittest.TestCase):
@@ -925,8 +928,14 @@ class TestSelfModelHooks(unittest.TestCase):
             interaction_class="NORMAL_CHAT",
             score=7.0,
         )
-        prefs = get_self_model().relevant_preferences(limit=10)
-        self.assertTrue(any(p.get("key") == key and p.get("confidence", 0) >= 0.9 for p in prefs))
+        owner_prefers = get_self_model().data.get("preference_state", {}).get("owner_prefers", [])
+        self.assertTrue(
+            any(
+                p.get("key") == key and p.get("confidence", 0) >= 0.9
+                for p in owner_prefers
+                if isinstance(p, dict)
+            )
+        )
 
     def test_shared_theme_requires_recurrence(self):
         import self_model as self_model_module

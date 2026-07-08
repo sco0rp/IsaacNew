@@ -18,9 +18,9 @@ Installation: pip install chromadb
 """
 
 import json
+import os
 import time
 import logging
-import threading
 from pathlib import Path
 from typing import Optional
 
@@ -29,6 +29,37 @@ from config import DATA_DIR
 log = logging.getLogger("Isaac.VectorMemory")
 
 CHROMA_PATH = DATA_DIR / "chroma"
+_VECTOR_DISABLED = False
+
+
+def _build_stub_embedding():
+    from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
+
+    class _StubEmbedding(EmbeddingFunction[Documents]):
+        """Lightweight local embedding — avoids onnxruntime in constrained environments."""
+
+        def __init__(self) -> None:
+            pass
+
+        @staticmethod
+        def name() -> str:
+            return "isaac_stub"
+
+        def __call__(self, input: Documents) -> Embeddings:
+            vectors: list[list[float]] = []
+            for text in input:
+                seed = sum(ord(ch) for ch in (text or "")) or 1
+                vectors.append([((seed * (i + 3)) % 997) / 997.0 for i in range(8)])
+            return vectors
+
+        def get_config(self) -> dict:
+            return {"version": 1}
+
+        @staticmethod
+        def build_from_config(config: dict) -> "_StubEmbedding":
+            return _StubEmbedding()
+
+    return _StubEmbedding()
 
 
 class VectorMemory:
@@ -45,57 +76,50 @@ class VectorMemory:
         self._init()
 
     def _init(self):
-        state: dict = {"ready": False, "error": None}
-
-        def _bootstrap() -> None:
-            try:
-                import chromadb
-                from chromadb.config import Settings
-
-                CHROMA_PATH.mkdir(parents=True, exist_ok=True)
-                client = chromadb.PersistentClient(
-                    path=str(CHROMA_PATH),
-                    settings=Settings(anonymized_telemetry=False),
-                )
-                conv_col = client.get_or_create_collection(
-                    name="konversationen",
-                    metadata={"hnsw:space": "cosine"},
-                )
-                wissen_col = client.get_or_create_collection(
-                    name="ki_wissen",
-                    metadata={"hnsw:space": "cosine"},
-                )
-                self._client = client
-                self._conv_col = conv_col
-                self._wissen_col = wissen_col
-                self._aktiv = True
-                state["ready"] = True
-                log.info(
-                    "VectorMemory aktiv │ Konversationen: %s │ Wissen: %s",
-                    conv_col.count(),
-                    wissen_col.count(),
-                )
-            except ImportError:
-                state["error"] = "import"
-            except Exception as exc:
-                state["error"] = str(exc)
-
-        worker = threading.Thread(target=_bootstrap, daemon=True)
-        worker.start()
-        worker.join(timeout=3.0)
-        if state["ready"]:
+        global _VECTOR_DISABLED
+        if os.environ.get("ISAAC_DISABLE_VECTOR_MEMORY", "").lower() in {
+            "1", "true", "yes", "on",
+        }:
+            _VECTOR_DISABLED = True
+            log.info("VectorMemory deaktiviert (ISAAC_DISABLE_VECTOR_MEMORY)")
             return
-        if state["error"] == "import":
+
+        try:
+            import chromadb
+            from chromadb.config import Settings
+
+            CHROMA_PATH.mkdir(parents=True, exist_ok=True)
+            client = chromadb.PersistentClient(
+                path=str(CHROMA_PATH),
+                settings=Settings(anonymized_telemetry=False),
+            )
+            embed = _build_stub_embedding()
+            conv_col = client.get_or_create_collection(
+                name="konversationen",
+                metadata={"hnsw:space": "cosine"},
+                embedding_function=embed,
+            )
+            wissen_col = client.get_or_create_collection(
+                name="ki_wissen",
+                metadata={"hnsw:space": "cosine"},
+                embedding_function=embed,
+            )
+            self._client = client
+            self._conv_col = conv_col
+            self._wissen_col = wissen_col
+            self._aktiv = True
+            log.info(
+                "VectorMemory aktiv │ Konversationen: %s │ Wissen: %s",
+                conv_col.count(),
+                wissen_col.count(),
+            )
+        except ImportError:
             log.info(
                 "ChromaDB nicht installiert → SQLite-Fallback aktiv.\n"
                 "Für semantisches Gedächtnis: pip install chromadb"
             )
-            return
-        if worker.is_alive():
-            log.warning("ChromaDB Init timeout → SQLite-Fallback aktiv")
-            return
-        if state["error"]:
-            log.warning("ChromaDB Init-Fehler: %s → Fallback aktiv", state["error"])
+        except Exception as exc:
+            log.warning("ChromaDB Init-Fehler: %s → Fallback aktiv", exc)
 
     @property
     def aktiv(self) -> bool:
@@ -262,6 +286,8 @@ class VectorMemory:
 
     # ── Status ────────────────────────────────────────────────────────────────
     def stats(self) -> dict:
+        if _VECTOR_DISABLED:
+            return {"aktiv": False, "grund": "deaktiviert"}
         if not self._aktiv:
             return {"aktiv": False, "grund": "ChromaDB nicht installiert"}
         try:

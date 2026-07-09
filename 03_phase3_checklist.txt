@@ -25,7 +25,7 @@ Validierung:
 [x] Gates in tool_runtime.py, mcp_registry.py
 [x] 3.2.1 Kernel-Routing: validate_action vor riskanten Intents (file/code/sudo)
 [x] 3.2.2 Audit-Pflicht bei blocked actions (apply_constitution_gate → AuditLog)
-[ ] 3.2.3 evals/governance_eval.py erweitern
+[x] 3.2.3 evals/governance_eval.py erweitern (Kernel Constitution-Gate)
 
 ──────────────────────────────────────────────────────────────────────────────
 3.3 SELF-MODEL (self_model.py + self_model_hooks.py)
@@ -81,7 +81,8 @@ AKTUELLER FOKUS (nächste 3 Schritte)
 1. [x] 3.1.3 Regelwerk → memory.set_fact
 2. [x] 3.1.4 Retrieval für definition.*-Fakten
 3. [x] 3.2.1 Constitution-Gate im Kernel
-4. [ ] 3.2.3 governance_eval erweitern
+4. [x] 3.2.3 governance_eval erweitern
+5. [ ] 3.3.1 Self-Model Präferenz-Updates härten
 
 Abschluss Phase 3 wenn: alle [ ] unter 3.1–3.6 erledigt oder bewusst als „later“
 dokumentiert + py_compile + sanity_check + unittest grün + Validierungsfälle A–G.

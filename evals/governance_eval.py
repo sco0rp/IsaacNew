@@ -67,6 +67,57 @@ def run() -> dict:
         "detail": constitution_block.get("blocked_by", []),
     })
 
+    # Phase 3.2.3 — Kernel-Routing nutzt dasselbe Verfassungs-Gate
+    from isaac_core import IsaacKernel, Intent
+
+    kernel = object.__new__(IsaacKernel)
+    blocked_code = kernel._enforce_constitution_gate(
+        "code: ändere die constitution.json komplett",
+        Intent.CODE,
+        sudo_aktiv=False,
+    )
+    cases.append({
+        "name": "kernel_blocks_self_modify_code",
+        "ok": (
+            blocked_code is not None
+            and "constitution_not_self_editable" in blocked_code
+        ),
+        "detail": blocked_code,
+    })
+
+    allowed_code = kernel._enforce_constitution_gate(
+        "code: print('hello')",
+        Intent.CODE,
+        sudo_aktiv=False,
+    )
+    cases.append({
+        "name": "kernel_allows_normal_code",
+        "ok": allowed_code is None,
+        "detail": allowed_code,
+    })
+
+    allowed_sudo = kernel._enforce_constitution_gate(
+        "sudo geheim",
+        Intent.SUDO_OPEN,
+        sudo_aktiv=False,
+    )
+    cases.append({
+        "name": "kernel_allows_owner_sudo_open",
+        "ok": allowed_sudo is None,
+        "detail": allowed_sudo,
+    })
+
+    not_gated = kernel._enforce_constitution_gate(
+        "Was ist 2+2?",
+        Intent.CHAT,
+        sudo_aktiv=False,
+    )
+    cases.append({
+        "name": "kernel_skips_normal_chat",
+        "ok": not_gated is None,
+        "detail": not_gated,
+    })
+
     passed = sum(1 for c in cases if c["ok"])
     return {"suite": "governance", "passed": passed, "total": len(cases), "cases": cases}
 

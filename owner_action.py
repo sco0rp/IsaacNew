@@ -45,7 +45,10 @@ _ACTION_VERBS = (
     "kopiere", "installiere", "starte", "führe aus", "fuehre aus",
     "stell ein", "setz", "mach", "liste", "scanne", "scann",
     "schreib", "sende", "rufe", "telefoniere", "lies", "lese", "erstelle",
-    "schick", "fotografiere", "nimm",
+    "schick", "fotografiere", "nimm", "spiele", "übersetze", "uebersetze",
+    "lade", "downloade", "ping", "vibriere", "benachrichtige", "erinnere",
+    "komprimiere", "entpacke", "packe", "teile", "stoppe", "aktiviere",
+    "deaktiviere", "schalte", "wechsle", "prüfe", "pruefe", "teste",
 )
 
 _PHOTOS_MARKERS = (
@@ -65,6 +68,24 @@ _EMAIL_MARKERS = ("gmail", "e-mail", "email", "mail", "posteingang", "postfach",
 _CALENDAR_MARKERS = ("kalender", "calendar", "termin", "termine", "agenda")
 _MAPS_MARKERS = ("maps", "karte", "navigation", "route", "weg")
 _DEVICE_STATUS_MARKERS = ("akku", "batterie", "speicherplatz", "speicher frei", "ip-adresse", "ip adresse")
+_MUSIC_MARKERS = ("spotify", "musik", "music", "song", "lied", "playlist", "höre", "hoere")
+_VIDEO_MARKERS = ("youtube", "video", "clip", "trailer")
+_WEATHER_MARKERS = ("wetter", "weather", "temperatur", "regenvorhersage", "vorhersage")
+_TRANSLATE_MARKERS = ("übersetze", "uebersetze", "übersetz", "uebersetz", "translate")
+_TIMER_MARKERS = ("timer", "countdown", "stoppuhr")
+_ALARM_MARKERS = ("wecker", "alarm")
+_CONTACT_MARKERS = ("kontakt", "kontakte", "telefonbuch", "contacts")
+_BLUETOOTH_MARKERS = ("bluetooth", "bluetooth")
+_TORCH_MARKERS = ("taschenlampe", "torch", "flashlight", "blitzlicht")
+_LOCATION_MARKERS = ("standort", "position", "gps", "koordinaten")
+_NOTIFICATION_MARKERS = ("benachrichtigung", "notification", "notify")
+_GIT_MARKERS = ("git status", "git pull", "git log", "git diff", "git commit")
+_INSTALL_MARKERS = ("installiere", "apt install", "pip install", "pkg install")
+_ISAAC_MARKERS = ("isaac status", "isaac log", "isaac logs", "isaac neustart", "isaac restart")
+_SHOPPING_MARKERS = ("amazon", "ebay", "kleinanzeigen")
+_VPN_MARKERS = ("vpn",)
+_HOTSPOT_MARKERS = ("hotspot", "tethering")
+_MOBILE_DATA_MARKERS = ("mobile daten", "mobilfunk", "lte", "5g daten")
 
 _SITE_ALIASES: dict[str, str] = {
     "google fotos": "https://photos.google.com/",
@@ -87,6 +108,42 @@ _SITE_ALIASES: dict[str, str] = {
     "übersetzer": "https://translate.google.com/",
     "uebersetzer": "https://translate.google.com/",
     "google translate": "https://translate.google.com/",
+    "amazon": "https://www.amazon.de/",
+    "ebay": "https://www.ebay.de/",
+    "netflix": "https://www.netflix.com/",
+    "reddit": "https://www.reddit.com/",
+    "twitter": "https://twitter.com/",
+    "x": "https://x.com/",
+    "instagram": "https://www.instagram.com/",
+    "facebook": "https://www.facebook.com/",
+    "telegram": "https://web.telegram.org/",
+    "discord": "https://discord.com/app",
+    "linkedin": "https://www.linkedin.com/",
+    "outlook": "https://outlook.live.com/",
+    "chatgpt": "https://chatgpt.com/",
+    "openai": "https://chatgpt.com/",
+    "deepl": "https://www.deepl.com/translator",
+    "dropbox": "https://www.dropbox.com/",
+    "onedrive": "https://onedrive.live.com/",
+    "paypal": "https://www.paypal.com/",
+    "news": "https://news.google.com/",
+    "google news": "https://news.google.com/",
+    "keep": "https://keep.google.com/",
+    "google keep": "https://keep.google.com/",
+    "notizen": "https://keep.google.com/",
+    "docs": "https://docs.google.com/",
+    "sheets": "https://sheets.google.com/",
+    "google sheets": "https://sheets.google.com/",
+    "google docs": "https://docs.google.com/",
+    "twitch": "https://www.twitch.tv/",
+    "soundcloud": "https://soundcloud.com/",
+    "ard": "https://www.ardmediathek.de/",
+    "zdf": "https://www.zdf.de/",
+    "wetter": "https://www.google.com/search?q=wetter",
+    "weather": "https://www.google.com/search?q=weather",
+    "kleinanzeigen": "https://www.kleinanzeigen.de/",
+    "booking": "https://www.booking.com/",
+    "maps offline": "https://maps.google.com/",
 }
 
 _ANDROID_INTENTS: dict[str, str] = {
@@ -122,6 +179,30 @@ _ANDROID_INTENTS: dict[str, str] = {
     "nfc": "android.settings.NFC_SETTINGS",
     "hotspot": "android.settings.TETHER_SETTINGS",
     "usb": "android.settings.USB_SETTINGS",
+    "uhr": "android.intent.action.SET_ALARM",
+    "wecker": "android.intent.action.SET_ALARM",
+    "rechner": "com.android.calculator2",
+    "taschenrechner": "com.android.calculator2",
+    "calculator": "com.android.calculator2",
+    "uhrzeit": "com.android.deskclock",
+    "clock": "com.android.deskclock",
+    "telefon": "android.intent.action.DIAL",
+    "telefonie": "android.intent.action.DIAL",
+    "vpn": "android.settings.VPN_SETTINGS",
+    "mobilfunk": "android.settings.DATA_ROAMING_SETTINGS",
+    "datenroaming": "android.settings.DATA_ROAMING_SETTINGS",
+    "sprachassistent": "android.intent.action.VOICE_COMMAND",
+    "qr": "com.google.zxing.client.android.SCAN",
+    "barcode": "com.google.zxing.client.android.SCAN",
+    "barcode scanner": "com.google.zxing.client.android.SCAN",
+    "wlan direct": "android.settings.WIFI_SETTINGS",
+    "sprache": "android.settings.LOCALE_SETTINGS",
+    "sprachen": "android.settings.LOCALE_SETTINGS",
+    "backup": "android.settings.BACKUP_AND_RESET_SETTINGS",
+    "werksreset": "android.settings.MASTER_CLEAR",
+    "zugriffshilfen": "android.settings.ACCESSIBILITY_SETTINGS",
+    "barrierefreiheit": "android.settings.ACCESSIBILITY_SETTINGS",
+    "wlan calling": "android.settings.WIFI_SETTINGS",
 }
 
 _CLEANUP_PROTECTED_NAMES = frozenset({
@@ -147,7 +228,7 @@ class CleanupStats:
 
 def _normalize(text: str) -> str:
     t = (text or "").strip().lower()
-    t = re.sub(r"^isaac[,:]?\s+", "", t)
+    t = re.sub(r"^isaac[,:]\s+", "", t)
     t = re.sub(r"\s+", " ", t)
     return t
 
@@ -161,6 +242,8 @@ def _is_explanatory(normalized: str) -> bool:
 
 
 def _is_owner_imperative(normalized: str) -> bool:
+    if normalized.startswith(("git ", "isaac ", "ping ", "ping6 ", "timer ", "wecker ", "alarm ")):
+        return True
     if _has_action_verb(normalized):
         return True
     status_patterns = (
@@ -170,6 +253,12 @@ def _is_owner_imperative(normalized: str) -> bool:
         r"wie ist (der )?(akku|batterie)",
         r"(welche|meine) ip",
         r"ip.adresse",
+        r"wie spät",
+        r"wie spaet",
+        r"welcher tag",
+        r"wo bin ich",
+        r"wie ist das wetter",
+        r"wie wird das wetter",
     )
     return any(re.search(p, normalized) for p in status_patterns)
 
@@ -376,13 +465,211 @@ def _extract_file_paths(text: str) -> tuple[str, str, str]:
             return op, m.group(1).strip(" .,!?\"'"), m.group(2).strip(" .,!?\"'")
     single_patterns = (
         (r"(?:lösche|loesch|delete)\s+(?:datei\s+)?(.+)$", "delete"),
-        (r"(?:lies|lese|read)\s+(?:datei\s+)?(.+)$", "read"),
+        (r"(?:lies|lese|read)\s+datei\s+(.+)$", "read"),
+        (r"(?:lies|lese|read)\s+([~/][^\s]+)$", "read"),
     )
     for pattern, op in single_patterns:
         m = re.search(pattern, text, re.I)
         if m:
             return op, m.group(1).strip(" .,!?\"'"), ""
     return "", "", ""
+
+
+def _extract_translate_text(text: str) -> tuple[str, str]:
+    patterns = (
+        r"(?:übersetze|uebersetze|translate)\s+(.+?)\s+(?:nach|in|to)\s+([a-zäöüß]{2,12})$",
+        r"(?:übersetze|uebersetze|translate)\s+(.+)$",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            if m.lastindex and m.lastindex >= 2:
+                return m.group(1).strip(" .,!?\"'"), m.group(2).strip()
+            return m.group(1).strip(" .,!?\"'"), "en"
+    return "", ""
+
+
+def _extract_weather_location(text: str) -> str:
+    patterns = (
+        r"(?:wetter|weather)\s+(?:in|für|fuer|bei)\s+(.+)$",
+        r"(?:zeige|zeig|hol)\s+(?:das\s+)?wetter\s+(?:in|für|fuer|bei)\s+(.+)$",
+        r"(?:wie (?:ist|wird) das )?wetter\s+(?:in|für|fuer|bei)\s+(.+)$",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            loc = m.group(1).strip(" .,!?")
+            if loc.lower() not in ("literatur", "motiv", "metapher"):
+                return loc
+    if re.search(r"\b(wetter|weather)\b", text, re.I):
+        return ""
+    return ""
+
+
+def _extract_media_query(text: str) -> tuple[str, str]:
+    patterns = (
+        (r"(?:spiele|höre|hoere|starte)\s+(?:auf\s+)?spotify\s+(.+)$", "spotify"),
+        (r"(?:spiele|zeige|such)\s+(?:auf\s+)?youtube\s+(.+)$", "youtube"),
+        (r"(?:spiele|zeige)\s+(?:video|clip)\s+(.+)$", "youtube"),
+        (r"(?:spiele|höre|hoere)\s+(?:musik|song|lied)\s+(.+)$", "spotify"),
+    )
+    for pattern, platform in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            return platform, m.group(1).strip(" .,!?")
+    return "", ""
+
+
+def _extract_timer_seconds(text: str) -> int:
+    m = re.search(
+        r"(?:timer|countdown)\s+(?:für|fuer|auf)?\s*(\d+)\s*(sek|sekunden|min|minuten|h|stunden)?",
+        text,
+        re.I,
+    )
+    if not m:
+        m = re.search(r"(\d+)\s*(sekunden|minuten|stunden)\s+timer", text, re.I)
+    if not m:
+        return 0
+    value = int(m.group(1))
+    unit = (m.group(2) or "min").lower()
+    if unit.startswith("sek"):
+        return value
+    if unit.startswith("h") or unit.startswith("st"):
+        return value * 3600
+    return value * 60
+
+
+def _extract_alarm_time(text: str) -> str:
+    m = re.search(r"(?:wecker|alarm)\s+(?:auf|um|für|fuer)?\s*(\d{1,2}[:.]\d{2})", text, re.I)
+    if m:
+        return m.group(1).replace(".", ":")
+    m = re.search(r"(?:wecker|alarm)\s+(?:auf|um|für|fuer)?\s*(\d{1,2})\s*uhr", text, re.I)
+    if m:
+        return f"{int(m.group(1)):02d}:00"
+    return ""
+
+
+def _extract_contact_query(text: str) -> str:
+    patterns = (
+        r"(?:suche|such|finde)\s+kontakt\s+(.+)$",
+        r"(?:zeige|zeig)\s+kontakt\s+(.+)$",
+        r"(?:rufe|telefoniere)\s+(.+?)\s+an$",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            name = m.group(1).strip(" .,!?")
+            if not re.match(r"^[\d\s\+\-/]+$", name):
+                return name
+    return ""
+
+
+def _extract_download_url(text: str) -> str:
+    m = re.search(r"(?:https?://|www\.)[^\s]+", text, re.I)
+    return m.group(0).strip() if m else ""
+
+
+def _extract_file_write(text: str) -> tuple[str, str]:
+    patterns = (
+        r"(?:schreibe|schreib)\s+(?:in\s+)?datei\s+([^\s]+)\s+(?:inhalt|content)\s*:\s*(.+)$",
+        r"(?:schreibe|schreib)\s+(?:in\s+)?datei\s+([^\s]+)\s+(.+)$",
+        r"(?:schreibe|schreib)\s+(?:in\s+)?([~/][^\s]+)\s+(?:inhalt|content)\s*:\s*(.+)$",
+        r"(?:schreibe|schreib)\s+(?:in\s+)?([~/][^\s]+)\s+(.+)$",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            return m.group(1).strip(" .,!?\"'"), m.group(2).strip()
+    return "", ""
+
+
+def _extract_find_file(text: str) -> tuple[str, str]:
+    patterns = (
+        r"(?:finde|such|suche)\s+datei\s+(.+?)(?:\s+in\s+(.+))?$",
+        r"(?:finde|such|suche)\s+(.+\.\w{1,6})(?:\s+in\s+(.+))?$",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            name = m.group(1).strip(" .,!?\"'")
+            root = (m.group(2) or "~").strip(" .,!?\"'") if m.lastindex and m.lastindex >= 2 else "~"
+            return name, root
+    return "", ""
+
+
+def _extract_archive_paths(text: str) -> tuple[str, str, str]:
+    patterns = (
+        (r"(?:komprimiere|packe|zip)\s+(.+?)\s+nach\s+(.+)$", "zip"),
+        (r"(?:entpacke|unzip|entpack)\s+(.+?)(?:\s+nach\s+(.+))?$", "unzip"),
+    )
+    for pattern, op in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            src = m.group(1).strip(" .,!?\"'")
+            dst = m.group(2).strip(" .,!?\"'") if m.lastindex and m.lastindex >= 2 and m.group(2) else ""
+            return op, src, dst
+    return "", "", ""
+
+
+def _extract_toggle_target(text: str) -> tuple[str, str]:
+    lower = text.lower()
+    pairs = (
+        (("wlan aus", "wifi aus", "schalte wlan aus", "deaktiviere wlan"), "wlan", "off"),
+        (("wlan an", "wifi an", "schalte wlan ein", "aktiviere wlan"), "wlan", "on"),
+        (("bluetooth aus", "deaktiviere bluetooth"), "bluetooth", "off"),
+        (("bluetooth an", "aktiviere bluetooth"), "bluetooth", "on"),
+        (("flugmodus an", "flugzeugmodus an"), "airplane", "on"),
+        (("flugmodus aus", "flugzeugmodus aus"), "airplane", "off"),
+        (("hotspot an", "tethering an"), "hotspot", "on"),
+        (("hotspot aus", "tethering aus"), "hotspot", "off"),
+        (("taschenlampe an", "torch an", "lampe an"), "torch", "on"),
+        (("taschenlampe aus", "torch aus", "lampe aus"), "torch", "off"),
+        (("mobile daten an", "mobilfunk an", "lte an"), "mobile_data", "on"),
+        (("mobile daten aus", "mobilfunk aus", "lte aus"), "mobile_data", "off"),
+    )
+    for phrases, target, state in pairs:
+        if any(p in lower for p in phrases):
+            return target, state
+    return "", ""
+
+
+def _extract_tts_text(text: str) -> str:
+    patterns = (
+        r"(?:lies vor|sprich|sage)\s*:?\s*(.+)$",
+        r"(?:text to speech|tts)\s+(.+)$",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            return m.group(1).strip(" .,!?\"'")
+    return ""
+
+
+def _extract_notification_text(text: str) -> str:
+    m = re.search(r"(?:benachrichtige|notify|notification)\s+(?:mich\s+)?(?:mit\s+)?(.+)$", text, re.I)
+    return m.group(1).strip(" .,!?\"'") if m else ""
+
+
+def _extract_git_command(text: str) -> str:
+    m = re.search(r"(git\s+(?:status|pull|log|diff|commit|push|fetch)\b.*)$", text, re.I)
+    return m.group(1).strip() if m else ""
+
+
+def _extract_install_command(text: str) -> str:
+    patterns = (
+        (r"(pip3?\s+install\s+.+)$", ""),
+        (r"(apt\s+install\s+.+)$", ""),
+        (r"(pkg\s+install\s+.+)$", ""),
+        (r"installiere\s+(?:paket\s+)?(.+)$", "installiere"),
+    )
+    for pattern, kind in patterns:
+        m = re.search(pattern, text, re.I)
+        if m:
+            if kind == "installiere":
+                pkg = m.group(1).strip()
+                return f"pkg install -y {pkg}" if "pkg" in text.lower() else f"apt install -y {pkg}"
+            return m.group(1).strip()
+    return ""
 
 
 def _extract_clipboard_text(text: str) -> tuple[str, str]:
@@ -404,8 +691,18 @@ def _device_status_kind(normalized: str) -> str:
     if any(t in normalized for t in ("speicher", "storage", "festplatte", "disk")):
         if not any(t in normalized for t in ("räum", "raeum", "aufräum", "aufraeum", "bereinige", "cleanup")):
             return "storage"
-    if any(t in normalized for t in ("ip", "netzwerkadresse", "adresse")):
+    if any(t in normalized for t in ("ip", "netzwerkadresse")) and "adresse" not in normalized.replace("ip-adresse", ""):
         return "ip"
+    if any(t in normalized for t in ("ip-adresse", "ip adresse", "netzwerkadresse")) or re.search(
+        r"\bip\b", normalized
+    ):
+        return "ip"
+    if any(t in normalized for t in ("uhrzeit", "wie spät", "wie spaet", "datum", "welcher tag")):
+        return "datetime"
+    if any(t in normalized for t in _LOCATION_MARKERS) or "wo bin ich" in normalized:
+        return "location"
+    if any(t in normalized for t in ("prozesse", "prozess", "cpu", "ram", "arbeitsspeicher", "auslastung")):
+        return "processes"
     if re.search(r"was steht .+ kalender", normalized):
         return "calendar_today"
     return "all"
@@ -438,9 +735,78 @@ def detect_owner_action(text: str) -> Optional[OwnerAction]:
 
     dry_run = _wants_dry_run(normalized)
 
-    maps_dest = _extract_maps_destination(raw)
-    if maps_dest:
-        return OwnerAction("maps_navigate", {"destination": maps_dest}, raw=raw)
+    if _contains_any(normalized, _ISAAC_MARKERS):
+        if "log" in normalized:
+            return OwnerAction("isaac_ops", {"op": "logs"}, raw=raw)
+        if any(t in normalized for t in ("neustart", "restart")):
+            return OwnerAction("isaac_ops", {"op": "restart"}, raw=raw)
+        return OwnerAction("isaac_ops", {"op": "status"}, raw=raw)
+
+    git_cmd = _extract_git_command(raw)
+    if git_cmd:
+        return OwnerAction("git_command", {"command": git_cmd}, raw=raw)
+
+    install_cmd = _extract_install_command(raw)
+    if install_cmd:
+        return OwnerAction("package_install", {"command": install_cmd}, raw=raw)
+
+    toggle_target, toggle_state = _extract_toggle_target(raw)
+    if toggle_target:
+        return OwnerAction("device_toggle", {"target": toggle_target, "state": toggle_state}, raw=raw)
+
+    translate_text, translate_lang = _extract_translate_text(raw)
+    if translate_text and _contains_any(normalized, _TRANSLATE_MARKERS + ("übersetze", "uebersetze", "translate")):
+        return OwnerAction("translate", {"text": translate_text, "target_lang": translate_lang}, raw=raw)
+
+    if _contains_any(normalized, _WEATHER_MARKERS) and not _is_explanatory(normalized):
+        if not re.search(r"\b(als motiv|in der literatur|literarisch|metapher)\b", normalized):
+            location = _extract_weather_location(raw)
+            return OwnerAction("weather", {"location": location}, raw=raw)
+
+    media_platform, media_query = _extract_media_query(raw)
+    if media_platform and media_query:
+        return OwnerAction("media_play", {"platform": media_platform, "query": media_query}, raw=raw)
+
+    if _contains_any(normalized, _TIMER_MARKERS) or normalized.startswith("timer "):
+        if re.search(r"\d+", normalized):
+            seconds = _extract_timer_seconds(raw)
+            if seconds > 0:
+                return OwnerAction("timer", {"seconds": seconds}, raw=raw)
+
+    alarm_time = _extract_alarm_time(raw)
+    if alarm_time or normalized.startswith(("wecker ", "alarm ")) or (
+        _contains_any(normalized, _ALARM_MARKERS) and normalized.startswith(_OPEN_PREFIXES)
+    ):
+        return OwnerAction("alarm", {"time": alarm_time}, raw=raw)
+
+    contact_query = _extract_contact_query(raw)
+    if contact_query:
+        return OwnerAction("contacts", {"query": contact_query}, raw=raw)
+    if _contains_any(normalized, _CONTACT_MARKERS) and normalized.startswith(_OPEN_PREFIXES):
+        return OwnerAction("contacts", {"query": ""}, raw=raw)
+
+    if _contains_any(normalized, _BLUETOOTH_MARKERS):
+        if any(t in normalized for t in ("scan", "scann", "geräte", "geraete")):
+            return OwnerAction("bluetooth", {"op": "scan"}, raw=raw)
+        if any(t in normalized for t in ("status", "verbunden")):
+            return OwnerAction("bluetooth", {"op": "status"}, raw=raw)
+        if normalized.startswith(_OPEN_PREFIXES) or "verbind" in normalized:
+            return OwnerAction("bluetooth", {"op": "settings"}, raw=raw)
+
+    tts_text = _extract_tts_text(raw)
+    if tts_text:
+        return OwnerAction("tts", {"text": tts_text}, raw=raw)
+
+    notify_text = _extract_notification_text(raw)
+    if notify_text:
+        return OwnerAction("notification", {"text": notify_text}, raw=raw)
+
+    if normalized.startswith("ping ") or normalized.startswith("ping6 "):
+        host = raw.split(maxsplit=1)[-1].strip() if " " in raw else "8.8.8.8"
+        return OwnerAction("network_test", {"kind": "ping", "target": host}, raw=raw)
+
+    if any(t in normalized for t in ("speedtest", "geschwindigkeitstest", "internetgeschwindigkeit")):
+        return OwnerAction("network_test", {"kind": "speedtest"}, raw=raw)
 
     email_search = _extract_email_search_query(raw)
     if email_search:
@@ -452,6 +818,50 @@ def detect_owner_action(text: str) -> Optional[OwnerAction]:
 
     if _contains_any(normalized, _EMAIL_MARKERS) and normalized.startswith(_OPEN_PREFIXES):
         return OwnerAction("email_open", {}, raw=raw)
+
+    if any(t in normalized for t in ("lade herunter", "downloade", "download")) and _extract_download_url(raw):
+        return OwnerAction(
+            "download_url",
+            {"url": _extract_download_url(raw), "path": _extract_path_hint(raw) or str(WORKSPACE)},
+            raw=raw,
+        )
+
+    write_path, write_content = _extract_file_write(raw)
+    if write_path and write_content:
+        return OwnerAction("file_write", {"path": write_path, "content": write_content}, raw=raw)
+
+    if re.search(r"(?:erstelle|erzeuge|mkdir)\s+(?:ordner|verzeichnis|folder)\s+", normalized):
+        m = re.search(r"(?:erstelle|erzeuge|mkdir)\s+(?:ordner|verzeichnis|folder)\s+(.+)$", raw, re.I)
+        if m:
+            return OwnerAction("mkdir", {"path": m.group(1).strip(" .,!?\"'")}, raw=raw)
+
+    find_name, find_root = _extract_find_file(raw)
+    if find_name:
+        return OwnerAction("find_files", {"name": find_name, "root": find_root}, raw=raw)
+
+    arch_op, arch_src, arch_dst = _extract_archive_paths(raw)
+    if arch_op:
+        return OwnerAction("archive", {"operation": arch_op, "source": arch_src, "destination": arch_dst}, raw=raw)
+
+    if re.search(r"(?:öffne|oeffne)\s+ordner\s+", normalized):
+        m = re.search(r"(?:öffne|oeffne)\s+ordner\s+(.+)$", raw, re.I)
+        if m:
+            return OwnerAction("open_folder", {"path": m.group(1).strip(" .,!?\"'")}, raw=raw)
+
+    if _contains_any(normalized, _SHOPPING_MARKERS) and normalized.startswith(("suche ", "such ", "finde ")):
+        m = re.search(r"(?:suche|such|finde)\s+(?:auf\s+)?(?:amazon|ebay|kleinanzeigen)\s+(?:nach\s+)?(.+)$", raw, re.I)
+        if m:
+            platform = next((p for p in ("amazon", "ebay", "kleinanzeigen") if p in normalized), "amazon")
+            return OwnerAction("shopping_search", {"platform": platform, "query": m.group(1).strip(" .,!?")}, raw=raw)
+
+    if re.search(r"(?:erstelle|erzeuge)\s+(?:termin|erinnerung|reminder)\s+", normalized):
+        m = re.search(r"(?:erstelle|erzeuge)\s+(?:termin|erinnerung|reminder)\s+(.+)$", raw, re.I)
+        if m:
+            return OwnerAction("calendar_create", {"title": m.group(1).strip(" .,!?")}, raw=raw)
+
+    maps_dest = _extract_maps_destination(raw)
+    if maps_dest:
+        return OwnerAction("maps_navigate", {"destination": maps_dest}, raw=raw)
 
     if _contains_any(normalized, _CALENDAR_MARKERS):
         if re.search(r"was steht|heute|morgen|diese woche", normalized):
@@ -499,8 +909,10 @@ def detect_owner_action(text: str) -> Optional[OwnerAction]:
             raw=raw,
         )
 
-    if _contains_any(normalized, _DEVICE_STATUS_MARKERS) or re.search(
-        r"(wie (voll|viel)|was steht).*(akku|batterie|speicher|kalender|ip)", normalized
+    if (
+        "wo bin ich" in normalized
+        or _contains_any(normalized, _DEVICE_STATUS_MARKERS)
+        or re.search(r"(wie (voll|viel)|was steht).*(akku|batterie|speicher|kalender|ip)", normalized)
     ):
         kind = _device_status_kind(normalized)
         if kind:
@@ -608,6 +1020,28 @@ async def execute_owner_action(action: OwnerAction) -> tuple[str, bool]:
         "phone_call": _phone_call,
         "sms_send": _sms_send,
         "clipboard": _clipboard,
+        "translate": _translate,
+        "weather": _weather,
+        "media_play": _media_play,
+        "timer": _timer,
+        "alarm": _alarm,
+        "contacts": _contacts,
+        "bluetooth": _bluetooth,
+        "tts": _tts,
+        "notification": _notification_send,
+        "network_test": _network_test,
+        "download_url": _download_url,
+        "file_write": _file_write,
+        "mkdir": _mkdir,
+        "find_files": _find_files,
+        "archive": _archive,
+        "open_folder": _open_folder,
+        "shopping_search": _shopping_search,
+        "calendar_create": _calendar_create,
+        "device_toggle": _device_toggle,
+        "git_command": _git_command,
+        "package_install": _package_install,
+        "isaac_ops": _isaac_ops,
     }
     handler = handlers.get(action.kind)
     if not handler:
@@ -1181,6 +1615,21 @@ async def _device_status(action: OwnerAction) -> tuple[str, bool]:
                 lines.extend(["", "--- IP ---", result["stdout"][:1500]])
                 break
 
+    if kind in {"datetime", "all"}:
+        result = await _shell("date '+%A %d.%m.%Y %H:%M:%S %Z' 2>/dev/null || date")
+        if result.get("stdout"):
+            lines.extend(["", "--- Datum/Uhrzeit ---", result["stdout"].strip()])
+
+    if kind == "location":
+        return await _location_get(OwnerAction("location", {}, raw=action.raw))
+
+    if kind in {"processes", "all"} and kind == "processes":
+        for cmd in ("top -bn1 | head -20", "ps aux --sort=-%mem | head -15"):
+            result = await _shell(cmd)
+            if result.get("stdout"):
+                lines.extend(["", "--- Prozesse ---", result["stdout"][:3000]])
+                break
+
     return "\n".join(lines).strip(), bool(len(lines) > 2)
 
 
@@ -1237,6 +1686,431 @@ async def _sms_send(action: OwnerAction) -> tuple[str, bool]:
             return f"[Owner] SMS-App geöffnet für: {dial}", True
         return f"[Owner] SMS fehlgeschlagen: {result.get('error', 'unbekannt')}", False
     return "[Owner] SMS nur auf Android/Termux verfügbar.", False
+
+
+async def _translate(action: OwnerAction) -> tuple[str, bool]:
+    text = str(action.params.get("text") or "").strip()
+    lang = str(action.params.get("target_lang") or "en").strip()
+    if not text:
+        return "[Owner] Kein Text zum Übersetzen.", False
+    url = f"https://translate.google.com/?sl=auto&tl={quote_plus(lang)}&text={quote_plus(text)}"
+    AuditLog.action("OwnerAction", "translate", f"{lang} {text[:80]}")
+    opened = await _open_url(url)
+    return f"[Owner] Übersetzung ({lang}): {text[:200]}\nURL: {url}\n{opened}", True
+
+
+async def _weather(action: OwnerAction) -> tuple[str, bool]:
+    location = str(action.params.get("location") or "").strip()
+    query = f"wetter {location}" if location else "wetter heute"
+    AuditLog.action("OwnerAction", "weather", query[:80])
+    try:
+        from search import get_search
+
+        result = await get_search().search(query, max_hits=5)
+        if result and (result.abstract or result.hits):
+            lines = [f"[Owner] Wetter: {query}", ""]
+            if result.abstract:
+                lines.append(result.abstract[:600])
+            for hit in (result.hits or [])[:3]:
+                lines.append(f"- {hit.titel}: {hit.snippet[:160] if hit.snippet else hit.url}")
+            return "\n".join(lines), True
+    except Exception as exc:
+        log.debug("Weather search failed: %s", exc)
+    url = f"https://www.google.com/search?q={quote_plus(query)}"
+    opened = await _open_url(url)
+    return f"[Owner] Wetterabfrage: {query}\nURL: {url}\n{opened}", True
+
+
+async def _media_play(action: OwnerAction) -> tuple[str, bool]:
+    platform = str(action.params.get("platform") or "youtube").strip().lower()
+    query = str(action.params.get("query") or "").strip()
+    if not query:
+        return "[Owner] Kein Medien-Suchbegriff.", False
+    urls = {
+        "spotify": f"https://open.spotify.com/search/{quote_plus(query)}",
+        "youtube": f"https://www.youtube.com/results?search_query={quote_plus(query)}",
+    }
+    url = urls.get(platform, urls["youtube"])
+    AuditLog.action("OwnerAction", "media_play", f"{platform} {query[:80]}")
+    opened = await _open_url(url)
+    return f"[Owner] {platform.title()}-Suche: {query}\nURL: {url}\n{opened}", True
+
+
+async def _timer(action: OwnerAction) -> tuple[str, bool]:
+    seconds = int(action.params.get("seconds") or 0)
+    if seconds <= 0:
+        return "[Owner] Ungültige Timer-Dauer.", False
+    AuditLog.action("OwnerAction", "timer", f"seconds={seconds}")
+    runtime = await _runtime()
+    if runtime.runtime == "termux":
+        result = await _shell(
+            f"termux-notification --title 'Isaac Timer' --content 'Läuft...' "
+            f"--button1 'OK' --id isaac_timer && (sleep {seconds} && "
+            f"termux-vibrate -d 800 && termux-notification --title 'Timer fertig' "
+            f"--content 'Zeit abgelaufen' --id isaac_timer_done) &"
+        )
+        if result.get("ok"):
+            return f"[Owner] Timer gestartet: {seconds} Sekunden.", True
+    return f"[Owner] Timer: {seconds}s (sleep {seconds} im Hintergrund empfohlen).", True
+
+
+async def _alarm(action: OwnerAction) -> tuple[str, bool]:
+    alarm_time = str(action.params.get("time") or "").strip()
+    AuditLog.action("OwnerAction", "alarm", alarm_time[:20])
+    runtime = await _runtime()
+    if runtime.runtime == "termux":
+        if alarm_time:
+            hour, minute = alarm_time.split(":", 1)
+            result = await _shell(
+                f"am start -a android.intent.action.SET_ALARM "
+                f"--ei android.intent.extra.alarm.HOUR {int(hour)} "
+                f"--ei android.intent.extra.alarm.MINUTES {int(minute)}"
+            )
+        else:
+            result = await _shell("am start -a android.intent.action.SET_ALARM")
+        if result.get("ok"):
+            return f"[Owner] Wecker-App geöffnet" + (f" ({alarm_time})" if alarm_time else "") + ".", True
+        return f"[Owner] Wecker fehlgeschlagen: {result.get('error', 'unbekannt')}", False
+    return "[Owner] Wecker nur auf Android/Termux verfügbar.", False
+
+
+async def _contacts(action: OwnerAction) -> tuple[str, bool]:
+    query = str(action.params.get("query") or "").strip()
+    AuditLog.action("OwnerAction", "contacts", query[:80])
+    runtime = await _runtime()
+    if runtime.runtime == "termux":
+        if query:
+            result = await _shell(
+                f"am start -a android.intent.action.VIEW "
+                f"-d content://com.android.contacts/contacts/filter/{quote_plus(query)}"
+            )
+        else:
+            result = await _shell(
+                "am start -a android.intent.action.VIEW -d content://com.android.contacts/contacts/"
+            )
+        if result.get("ok"):
+            return f"[Owner] Kontakte geöffnet" + (f" (Suche: {query})" if query else "") + ".", True
+        return f"[Owner] Kontakte fehlgeschlagen: {result.get('error', 'unbekannt')}", False
+    return "[Owner] Kontakte nur auf Android/Termux verfügbar.", False
+
+
+async def _bluetooth(action: OwnerAction) -> tuple[str, bool]:
+    op = str(action.params.get("op") or "settings").strip().lower()
+    AuditLog.action("OwnerAction", "bluetooth", op)
+    runtime = await _runtime()
+    if op == "settings":
+        return await _app_open(OwnerAction("app_open", {"name": "bluetooth"}, raw=action.raw))
+    if runtime.runtime == "termux":
+        if op == "scan":
+            result = await _shell("termux-bluetooth-scan -d 8")
+            if result.get("stdout"):
+                return f"[Owner] Bluetooth-Scan:\n{result['stdout'][:3000]}", True
+        if op == "status":
+            result = await _shell("termux-bluetooth-info")
+            if result.get("stdout"):
+                return f"[Owner] Bluetooth:\n{result['stdout'][:2000]}", True
+    result = await _shell("bluetoothctl show 2>/dev/null; bluetoothctl devices 2>/dev/null | head -20")
+    return f"[Owner] Bluetooth:\n{result.get('stdout', result.get('error', 'nicht verfügbar'))}", bool(result.get("stdout"))
+
+
+async def _tts(action: OwnerAction) -> tuple[str, bool]:
+    text = str(action.params.get("text") or "").strip()
+    if not text:
+        return "[Owner] Kein Text für Sprachausgabe.", False
+    AuditLog.action("OwnerAction", "tts", text[:80])
+    runtime = await _runtime()
+    if runtime.runtime == "termux":
+        result = await _shell(f"termux-tts-speak {shlex_quote(text)}")
+        if result.get("ok"):
+            return f"[Owner] Vorlesen: {text[:200]}", True
+        return f"[Owner] TTS fehlgeschlagen: {result.get('error', 'unbekannt')}", False
+    result = await _shell(f"espeak {shlex_quote(text)} 2>/dev/null || spd-say {shlex_quote(text)} 2>/dev/null")
+    return f"[Owner] Vorlesen: {text[:200]}", bool(result.get("ok"))
+
+
+async def _notification_send(action: OwnerAction) -> tuple[str, bool]:
+    text = str(action.params.get("text") or "").strip()
+    if not text:
+        return "[Owner] Kein Benachrichtigungstext.", False
+    AuditLog.action("OwnerAction", "notification", text[:80])
+    runtime = await _runtime()
+    if runtime.runtime == "termux":
+        result = await _shell(
+            f"termux-notification --title 'Isaac' --content {shlex_quote(text)}"
+        )
+        if result.get("ok"):
+            return f"[Owner] Benachrichtigung gesendet: {text[:200]}", True
+        return f"[Owner] Benachrichtigung fehlgeschlagen: {result.get('error', 'unbekannt')}", False
+    return "[Owner] Benachrichtigungen nur mit Termux-API verfügbar.", False
+
+
+async def _network_test(action: OwnerAction) -> tuple[str, bool]:
+    kind = str(action.params.get("kind") or "ping").strip().lower()
+    target = str(action.params.get("target") or "8.8.8.8").strip()
+    AuditLog.action("OwnerAction", "network_test", f"{kind} {target[:40]}")
+    if kind == "speedtest":
+        result = await _shell("curl -s https://raw.githubusercontent.com/sivel/speedtest-cli/master/speedtest.py | python3 - 2>/dev/null | head -20")
+        if not result.get("stdout"):
+            return await _open_target(OwnerAction("open_target", {"target": "https://fast.com"}, raw=action.raw))
+        return f"[Owner] Speedtest:\n{result['stdout'][:4000]}", True
+    result = await _shell(f"ping -c 4 {shlex_quote(target)} 2>/dev/null || ping -n 4 {shlex_quote(target)}")
+    lines = [f"[Owner] Ping {target}", "", result.get("stdout") or result.get("error", "fehlgeschlagen")]
+    return "\n".join(lines), bool(result.get("ok"))
+
+
+async def _download_url(action: OwnerAction) -> tuple[str, bool]:
+    url = str(action.params.get("url") or "").strip()
+    dest = str(action.params.get("path") or str(WORKSPACE)).strip()
+    if not url:
+        return "[Owner] Keine Download-URL.", False
+    if not url.startswith("http"):
+        url = f"https://{url}"
+    dest_path = Path(dest).expanduser()
+    if dest_path.is_dir():
+        filename = url.rstrip("/").split("/")[-1] or "download.bin"
+        dest_path = dest_path / filename
+    AuditLog.action("OwnerAction", "download_url", url[:120])
+    result = await _shell(f"curl -fL --retry 2 -o {shlex_quote(str(dest_path))} {shlex_quote(url)}")
+    if dest_path.exists():
+        return f"[Owner] Heruntergeladen: {dest_path} ({dest_path.stat().st_size} Bytes)", True
+    return f"[Owner] Download fehlgeschlagen: {result.get('error', result.get('stderr', 'unbekannt'))}", False
+
+
+async def _file_write(action: OwnerAction) -> tuple[str, bool]:
+    from file_access import execute_file_command, FileCommand
+
+    path = str(action.params.get("path") or "").strip()
+    content = str(action.params.get("content") or "")
+    cmd = FileCommand(operation="write", path=path, content=content)
+    AuditLog.action("OwnerAction", "file_write", path[:80])
+    out, ok = execute_file_command(cmd)
+    return f"[Owner] {out}", ok
+
+
+async def _mkdir(action: OwnerAction) -> tuple[str, bool]:
+    from file_access import resolve_path
+
+    path = str(action.params.get("path") or "").strip()
+    resolved, error = resolve_path(path)
+    if not resolved:
+        return f"[Owner] {error}", False
+    try:
+        resolved.mkdir(parents=True, exist_ok=True)
+        AuditLog.action("OwnerAction", "mkdir", str(resolved)[:120])
+        return f"[Owner] Ordner erstellt: {resolved}", True
+    except Exception as exc:
+        return f"[Owner] Ordner fehlgeschlagen: {exc}", False
+
+
+async def _find_files(action: OwnerAction) -> tuple[str, bool]:
+    name = str(action.params.get("name") or "").strip()
+    root = str(action.params.get("root") or "~").strip()
+    if not name:
+        return "[Owner] Kein Dateiname.", False
+    from file_access import resolve_path
+
+    resolved, error = resolve_path(root)
+    if not resolved or not resolved.exists():
+        return f"[Owner] Suchpfad: {error or 'nicht gefunden'}", False
+    AuditLog.action("OwnerAction", "find_files", f"{name} in {resolved}")
+    if "*" in name or "?" in name:
+        cmd = f"find {shlex_quote(str(resolved))} -name {shlex_quote(name)} 2>/dev/null | head -40"
+    else:
+        cmd = f"find {shlex_quote(str(resolved))} -iname {shlex_quote('*' + name + '*')} 2>/dev/null | head -40"
+    result = await _shell(cmd)
+    output = (result.get("stdout") or "").strip()
+    if output:
+        return f"[Owner] Gefunden in {resolved}:\n{output}", True
+    return f"[Owner] Keine Treffer für '{name}' in {resolved}.", False
+
+
+async def _archive(action: OwnerAction) -> tuple[str, bool]:
+    op = str(action.params.get("operation") or "").strip().lower()
+    source = str(action.params.get("source") or "").strip()
+    destination = str(action.params.get("destination") or "").strip()
+    from file_access import resolve_path
+
+    src, err = resolve_path(source)
+    if not src or not src.exists():
+        return f"[Owner] Quelle: {err or 'nicht gefunden'}", False
+    AuditLog.action("OwnerAction", "archive", f"{op} {source[:60]}")
+    if op == "zip":
+        dst, derr = resolve_path(destination) if destination else (None, "")
+        dst_path = str(dst) if dst else str(src) + ".zip"
+        if not dst_path.endswith(".zip"):
+            dst_path += ".zip"
+        result = await _shell(f"zip -r {shlex_quote(dst_path)} {shlex_quote(str(src))}")
+        return f"[Owner] Archiv erstellt: {dst_path}", bool(result.get("ok"))
+    dst_dir = resolve_path(destination)[0] if destination else src.parent
+    dst = str(dst_dir or src.parent)
+    result = await _shell(f"unzip -o {shlex_quote(str(src))} -d {shlex_quote(dst)}")
+    return f"[Owner] Entpackt nach: {dst}", bool(result.get("ok"))
+
+
+async def _open_folder(action: OwnerAction) -> tuple[str, bool]:
+    from file_access import resolve_path
+
+    path = str(action.params.get("path") or "").strip()
+    resolved, error = resolve_path(path)
+    if not resolved:
+        return f"[Owner] {error}", False
+    AuditLog.action("OwnerAction", "open_folder", str(resolved)[:120])
+    runtime = await _runtime()
+    if runtime.runtime == "termux":
+        uri = f"file://{resolved}"
+        result = await _shell(f"am start -a android.intent.action.VIEW -d {shlex_quote(uri)} -t resource/folder")
+        if result.get("ok"):
+            return f"[Owner] Ordner geöffnet: {resolved}", True
+    result = await _shell(f"xdg-open {shlex_quote(str(resolved))} 2>/dev/null")
+    return f"[Owner] Ordner: {resolved}", bool(result.get("ok"))
+
+
+async def _shopping_search(action: OwnerAction) -> tuple[str, bool]:
+    platform = str(action.params.get("platform") or "amazon").strip().lower()
+    query = str(action.params.get("query") or "").strip()
+    urls = {
+        "amazon": f"https://www.amazon.de/s?k={quote_plus(query)}",
+        "ebay": f"https://www.ebay.de/sch/i.html?_nkw={quote_plus(query)}",
+        "kleinanzeigen": f"https://www.kleinanzeigen.de/s-suchanfrage.html?keywords={quote_plus(query)}",
+    }
+    url = urls.get(platform, urls["amazon"])
+    AuditLog.action("OwnerAction", "shopping_search", f"{platform} {query[:80]}")
+    opened = await _open_url(url)
+    return f"[Owner] {platform.title()}-Suche: {query}\nURL: {url}\n{opened}", True
+
+
+async def _calendar_create(action: OwnerAction) -> tuple[str, bool]:
+    title = str(action.params.get("title") or "").strip()
+    if not title:
+        return "[Owner] Kein Termintitel.", False
+    url = f"https://calendar.google.com/calendar/r/eventedit?text={quote_plus(title)}"
+    AuditLog.action("OwnerAction", "calendar_create", title[:80])
+    opened = await _open_url(url)
+    return f"[Owner] Termin erstellen: {title}\nURL: {url}\n{opened}", True
+
+
+async def _device_toggle(action: OwnerAction) -> tuple[str, bool]:
+    target = str(action.params.get("target") or "").strip().lower()
+    state = str(action.params.get("state") or "on").strip().lower()
+    enabled = state == "on"
+    AuditLog.action("OwnerAction", "device_toggle", f"{target}={state}")
+    runtime = await _runtime()
+    commands: dict[str, tuple[str, str]] = {
+        "wlan": (
+            f"termux-wifi-enable {'true' if enabled else 'false'}",
+            "nmcli radio wifi on" if enabled else "nmcli radio wifi off",
+        ),
+        "torch": (
+            f"termux-torch {'on' if enabled else 'off'}",
+            "",
+        ),
+        "bluetooth": (
+            "",
+            f"bluetoothctl power {'on' if enabled else 'off'}",
+        ),
+        "airplane": (
+            "am start -a android.settings.AIRPLANE_MODE_SETTINGS",
+            "",
+        ),
+        "hotspot": (
+            "am start -a android.settings.TETHER_SETTINGS",
+            "",
+        ),
+        "mobile_data": (
+            "am start -a android.settings.DATA_ROAMING_SETTINGS",
+            "",
+        ),
+    }
+    termux_cmd, linux_cmd = commands.get(target, ("", ""))
+    if runtime.runtime == "termux" and termux_cmd:
+        result = await _shell(termux_cmd)
+        if result.get("ok"):
+            return f"[Owner] {target} → {state}", True
+        if target in {"airplane", "hotspot", "mobile_data"}:
+            return f"[Owner] Einstellungen für {target} geöffnet — bitte manuell schalten.", True
+        return f"[Owner] {target} fehlgeschlagen: {result.get('error', 'unbekannt')}", False
+    if linux_cmd:
+        result = await _shell(linux_cmd)
+        return f"[Owner] {target} → {state}", bool(result.get("ok"))
+    return f"[Owner] Toggle {target}/{state} nicht unterstützt.", False
+
+
+async def _location_get(action: OwnerAction) -> tuple[str, bool]:
+    AuditLog.action("OwnerAction", "location", action.raw[:80])
+    runtime = await _runtime()
+    if runtime.runtime == "termux":
+        data = await _shell_json("termux-location -p gps")
+        if isinstance(data, dict):
+            lat = data.get("latitude")
+            lon = data.get("longitude")
+            acc = data.get("accuracy")
+            if lat is not None and lon is not None:
+                maps = f"https://maps.google.com/?q={lat},{lon}"
+                return (
+                    f"[Owner] Standort: {lat}, {lon}"
+                    + (f" (±{acc}m)" if acc else "")
+                    + f"\nMaps: {maps}"
+                ), True
+        result = await _shell("termux-location -p gps")
+        if result.get("stdout"):
+            return f"[Owner] Standort:\n{result['stdout'][:2000]}", True
+    return "[Owner] Standort nur mit Termux-API (termux-location) verfügbar.", False
+
+
+async def _git_command(action: OwnerAction) -> tuple[str, bool]:
+    command = str(action.params.get("command") or "").strip()
+    if not command:
+        return "[Owner] Kein Git-Befehl.", False
+    AuditLog.action("OwnerAction", "git_command", command[:120])
+    cwd = shlex_quote(str(BASE_DIR))
+    result = await _shell(f"cd {cwd} && {command}")
+    lines = [f"[Owner] {command}", "", result.get("stdout") or result.get("error", "")]
+    return "\n".join(lines).strip(), bool(result.get("ok"))
+
+
+async def _package_install(action: OwnerAction) -> tuple[str, bool]:
+    command = str(action.params.get("command") or "").strip()
+    if not command:
+        return "[Owner] Kein Installationsbefehl.", False
+    AuditLog.action("OwnerAction", "package_install", command[:120])
+    result = await _shell(command)
+    lines = [f"[Owner] {command}", ""]
+    if result.get("stdout"):
+        lines.append(result["stdout"][:6000])
+    if result.get("stderr"):
+        lines.append(result["stderr"][:2000])
+    return "\n".join(lines), bool(result.get("ok"))
+
+
+async def _isaac_ops(action: OwnerAction) -> tuple[str, bool]:
+    op = str(action.params.get("op") or "status").strip().lower()
+    AuditLog.action("OwnerAction", "isaac_ops", op)
+    if op == "logs":
+        lines = ["[Owner] Isaac-Logs", ""]
+        if LOG_DIR.exists():
+            for path in sorted(LOG_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:3]:
+                try:
+                    tail = path.read_text(encoding="utf-8", errors="replace").splitlines()[-15:]
+                    lines.extend([f"--- {path.name} ---", *tail, ""])
+                except OSError:
+                    pass
+        return "\n".join(lines).strip() or "[Owner] Keine Logs gefunden.", True
+    if op == "restart":
+        return (
+            "[Owner] Neustart manuell ausführen:\n"
+            f"  cd {BASE_DIR} && bash run_isaac.sh\n"
+            "Oder laufenden Prozess beenden und isaac_core.py neu starten."
+        ), True
+    lines = [
+        "[Owner] Isaac-Status",
+        f"BASE_DIR: {BASE_DIR}",
+        f"WORKSPACE: {WORKSPACE}",
+        f"DATA_DIR: {DATA_DIR}",
+        f"Privilege: {'admin' if is_owner_equivalent_mode() else 'user'}",
+        f"Computer-Use: {get_config().computer_use_enabled}",
+        f"Browser: {get_config().browser_automation}",
+    ]
+    return "\n".join(lines), True
 
 
 async def _clipboard(action: OwnerAction) -> tuple[str, bool]:

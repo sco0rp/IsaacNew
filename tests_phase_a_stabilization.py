@@ -1726,6 +1726,73 @@ class TestConstitutionOwnerOverride(unittest.TestCase):
         self.assertIsNotNone(action)
         self.assertEqual(action.kind, "phone_call")
 
+    def test_owner_action_detects_translate(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("übersetze guten morgen nach englisch")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "translate")
+
+    def test_owner_action_detects_weather(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("zeige wetter in Berlin")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "weather")
+        self.assertEqual(action.params.get("location"), "Berlin")
+
+    def test_owner_action_detects_media_play(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("spiele auf spotify bohemian rhapsody")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "media_play")
+        self.assertEqual(action.params.get("platform"), "spotify")
+
+    def test_owner_action_detects_timer(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("starte timer 5 minuten")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "timer")
+        self.assertEqual(action.params.get("seconds"), 300)
+
+    def test_owner_action_detects_device_toggle(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("schalte wlan aus")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "device_toggle")
+        self.assertEqual(action.params.get("target"), "wlan")
+
+    def test_owner_action_detects_shopping_search(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("suche auf amazon nach usb c kabel")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "shopping_search")
+
+    def test_owner_action_detects_git_command(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("git status")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "git_command")
+
+    def test_owner_action_detects_isaac_status(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("isaac status")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "isaac_ops")
+
+    def test_owner_action_detects_find_files(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("finde datei config.py in ~/workspace")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "find_files")
+
     def test_override_prefix_with_sudo_allows_and_audits(self):
         from constitution_override import apply_constitution_gate, build_override_context
         from config import Level

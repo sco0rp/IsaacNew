@@ -1573,6 +1573,97 @@ class TestConstitutionOwnerOverride(unittest.TestCase):
             detect_owner_action("erkläre mir das Wetter als sprachliches Motiv in Literatur")
         )
 
+    def test_owner_action_detects_router_admin(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("öffne die router oberfläche im wlan")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "router_admin")
+
+    def test_owner_action_detects_wlan_connect_with_ssid(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action('verbinde dich mit wlan "MeinHeim"')
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "wlan_connect")
+        self.assertEqual(action.params.get("ssid"), "MeinHeim")
+
+    def test_owner_action_detects_web_search(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("suche bei google nach python asyncio tutorial")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "web_search")
+        self.assertIn("python", action.params.get("query", "").lower())
+
+    def test_owner_action_detects_cleanup_dry_run(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("zeig mir was du beim dateisystem aufräumen würdest")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "filesystem_cleanup")
+        self.assertTrue(action.params.get("dry_run"))
+
+    def test_owner_action_detects_file_list(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("zeige dateien in ~/Downloads")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "file_list")
+
+    def test_owner_action_detects_app_open(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("öffne einstellungen")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "app_open")
+
+    def test_owner_action_detects_shell_inline(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("führe aus: ls -la")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "shell")
+        self.assertEqual(action.params.get("command"), "ls -la")
+
+    def test_owner_action_scan_cleanup_targets(self):
+        from owner_action import _scan_cleanup_targets
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache = root / "sub" / "__pycache__"
+            cache.mkdir(parents=True)
+            (cache / "x.pyc").write_bytes(b"x")
+            with patch("owner_action._cleanup_roots", return_value=[root]):
+                targets = _scan_cleanup_targets("standard")
+            paths = {str(p) for p, _ in targets}
+            self.assertTrue(any("__pycache__" in p for p in paths))
+
+    def test_owner_action_detects_downloads_cleanup(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("räume downloads auf")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "filesystem_cleanup")
+        self.assertEqual(action.params.get("root"), "~/Downloads")
+
+    def test_owner_action_detects_local_photos_search(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("suche in meinen fotos nach gelbe blumen")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "photos_search")
+        self.assertEqual(action.params.get("query"), "gelbe blumen")
+
+    def test_owner_action_detects_start_site_alias(self):
+        from owner_action import detect_owner_action
+
+        action = detect_owner_action("starte youtube")
+        self.assertIsNotNone(action)
+        self.assertEqual(action.kind, "open_target")
+        self.assertEqual(action.params.get("target"), "youtube")
+
     def test_override_prefix_with_sudo_allows_and_audits(self):
         from constitution_override import apply_constitution_gate, build_override_context
         from config import Level

@@ -1,4 +1,8 @@
 import json
+import os
+
+os.environ["ISAAC_PRIVILEGE_MODE"] = "user"
+
 import tempfile
 import unittest
 from pathlib import Path

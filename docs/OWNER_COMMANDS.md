@@ -218,7 +218,7 @@ auf der USERDATA-Partition (`/dev/block/.../USERDATA`). Erkennbar an:
 - Repo unter `/root/isaacnew`
 - Kein `/data/data/com.termux`
 
-`.env` auf dem Gerät:
+Gerätespezifische Einstellungen in `.env.local` (gitignored):
 
 ```env
 ISAAC_PRIVILEGE_MODE=admin

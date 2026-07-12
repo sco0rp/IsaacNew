@@ -10,6 +10,9 @@ try:
     from dotenv import load_dotenv
 
     load_dotenv()
+    # Gerätespezifisch (gitignored): Admin-Modus, S8-Runtime, lokale Keys
+    # override=False: Unittests können user-Modus erzwingen; .env.local füllt nur Lücken
+    load_dotenv(Path(__file__).parent / ".env.local", override=False)
 except Exception:
     pass
 

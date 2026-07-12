@@ -5,6 +5,7 @@ __pycache__/
 *.out
 *.bak
 .env
+.env.local
 .env.backup*
 .venv/
 data/

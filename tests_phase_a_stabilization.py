@@ -1,6 +1,8 @@
 import os
 
 os.environ.setdefault("ISAAC_DISABLE_VECTOR_MEMORY", "1")
+# Geräte-.env.local kann admin setzen — Regression-Tests laufen im user-Modus
+os.environ["ISAAC_PRIVILEGE_MODE"] = "user"
 
 import asyncio
 import json

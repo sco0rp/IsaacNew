@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from config import BASE_DIR, WORKSPACE, get_config
+from config import BASE_DIR, WORKSPACE, get_config, is_owner_equivalent_mode
 from audit import AuditLog
 
 log = logging.getLogger("Isaac.ComputerUse")
@@ -62,6 +62,8 @@ def detect_runtime() -> str:
 
 def computer_use_enabled() -> bool:
     cfg = get_config()
+    if is_owner_equivalent_mode(cfg):
+        return True
     explicit = getattr(cfg, "computer_use_enabled", None)
     if explicit is not None:
         return bool(explicit)
@@ -117,6 +119,8 @@ def _blocked_shell(command: str) -> Optional[str]:
     lowered = (command or "").strip().lower()
     if not lowered:
         return "Leerer Befehl"
+    if is_owner_equivalent_mode():
+        return None
     for fragment in BLOCKED_SHELL_FRAGMENTS:
         if fragment in lowered:
             return f"Blockiert: unsicherer Shell-Fragment ({fragment.strip()})"

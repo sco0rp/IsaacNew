@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from config import Level
+from config import Level, is_owner_equivalent_mode
 from audit import AuditLog
 
 log = logging.getLogger("Isaac.ConstitutionOverride")
@@ -66,11 +66,16 @@ def build_override_context(
 
 
 def _has_owner_authority(ctx: OwnerOverrideContext) -> bool:
-    return ctx.caller_level >= Level.STEFFEN or ctx.sudo_active
+    return ctx.caller_level >= Level.STEFFEN or ctx.sudo_active or is_owner_equivalent_mode()
 
 
 def _has_explicit_signal(ctx: OwnerOverrideContext) -> bool:
-    return ctx.explicit_prefix or ctx.sudo_active or ctx.owner_confirmed
+    return (
+        ctx.explicit_prefix
+        or ctx.sudo_active
+        or ctx.owner_confirmed
+        or is_owner_equivalent_mode()
+    )
 
 
 def evaluate_owner_override(
@@ -119,7 +124,7 @@ def evaluate_owner_override(
             "reason": "Explizites Override-Signal fehlt",
         }
 
-    if not ctx.override_reason and not ctx.sudo_active:
+    if not ctx.override_reason and not ctx.sudo_active and not is_owner_equivalent_mode():
         return {
             "allowed": False,
             "overridden": False,
@@ -131,7 +136,10 @@ def evaluate_owner_override(
         "allowed": True,
         "overridden": True,
         "blocked_by": blocked_by,
-        "override_reason": ctx.override_reason or "SUDO-Session aktiv",
+        "override_reason": (
+            ctx.override_reason
+            or ("owner_equivalent_mode" if is_owner_equivalent_mode() else "SUDO-Session aktiv")
+        ),
         "source": ctx.source,
     }
 

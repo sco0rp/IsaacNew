@@ -14,7 +14,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Optional
 
-from config import DATA_DIR, Level
+from config import DATA_DIR, Level, is_owner_equivalent_mode
 from audit import AuditLog
 
 QUEUE_PATH = DATA_DIR / "confirmation_queue.json"
@@ -98,6 +98,8 @@ class ConfirmationPolicy:
         risk = (metadata.get('risk') or 'medium').lower()
         outside = bool(metadata.get('outside_effect', False))
         caller_level = int(getattr(ctx, 'level', 0))
+        if is_owner_equivalent_mode():
+            return SecurityVerdict(True, 'Owner-equivalent mode (admin)', False, risk)
         # Owner-level skips confirmations.
         if caller_level >= Level.STEFFEN:
             return SecurityVerdict(True, 'Owner-level approved', False, risk)

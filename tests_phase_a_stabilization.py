@@ -1076,6 +1076,11 @@ class TestHermesCompatibilityLayer(unittest.TestCase):
         result = asyncio.run(runtime.execute(AgentAction("shell", {"command": "sudo rm -rf /"})))
         self.assertFalse(result.get("ok"))
 
+    def test_owner_equivalent_shell_not_blocked(self):
+        from computer_use import _blocked_shell
+
+        with patch("computer_use.is_owner_equivalent_mode", return_value=True):
+            self.assertIsNone(_blocked_shell("sudo rm -rf /"))
 
     def test_computer_use_action_blocks_unsafe_shell(self):
         cu = HermesComputerUseAdapter()
@@ -1478,6 +1483,64 @@ class TestConstitutionOwnerOverride(unittest.TestCase):
             build_override_context(caller_level=Level.TASK),
         )
         self.assertFalse(result.get("allowed"))
+
+    def test_owner_equivalent_config_defaults(self):
+        from config import IsaacConfig, is_owner_equivalent_mode
+
+        cfg = IsaacConfig(privilege_mode="admin", computer_use_enabled=False, filesystem_access_tier="workspace")
+        cfg._apply_owner_equivalent_defaults()
+        self.assertTrue(cfg.computer_use_enabled)
+        self.assertTrue(cfg.computer_use_live)
+        self.assertEqual(cfg.filesystem_access_tier, "full")
+        self.assertTrue(is_owner_equivalent_mode(cfg))
+
+    def test_owner_equivalent_security_policy_skips_confirmation(self):
+        from security_policy import ConfirmationPolicy
+        from privilege import PrivCtx
+        from config import Level
+
+        policy = ConfirmationPolicy(path=Path("/tmp/isaac_test_confirm_queue.json"))
+        ctx = PrivCtx(caller="Executor", level=Level.ISAAC, r_trace="test trace long enough")
+        with patch("security_policy.is_owner_equivalent_mode", return_value=True):
+            verdict = policy.analyze("system_command", ctx, {"risk": "high", "outside_effect": True})
+        self.assertTrue(verdict.allowed)
+        self.assertFalse(verdict.requires_confirmation)
+
+    def test_owner_equivalent_file_access_outside_workspace(self):
+        from file_access import resolve_path
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = Path(tmp) / "secret.txt"
+            outside.write_text("ok", encoding="utf-8")
+            with patch("file_access.is_owner_equivalent_mode", return_value=True):
+                resolved, error = resolve_path(str(outside))
+            self.assertFalse(error)
+            self.assertEqual(resolved, outside.resolve())
+
+    def test_owner_equivalent_constitution_auto_override(self):
+        from constitution_override import apply_constitution_gate, build_override_context
+        from config import Level
+
+        with patch("constitution_override.is_owner_equivalent_mode", return_value=True):
+            gate = apply_constitution_gate(
+                "tool_invoke",
+                {
+                    "privilege_escalation": True,
+                    "owner_approved": False,
+                    "audit_logged": True,
+                    "risk": "high",
+                },
+                build_override_context(caller_level=Level.TASK, source="test"),
+            )
+        self.assertTrue(gate.get("allowed"))
+        self.assertTrue((gate.get("override") or {}).get("overridden"))
+
+    def test_isaac_kernel_detects_shell_without_agent_prefix_in_admin(self):
+        kernel = IsaacKernel()
+        with patch("isaac_core.is_owner_equivalent_mode", return_value=True):
+            self.assertTrue(kernel._is_agent_request("shell ls -la /"))
+            self.assertEqual(detect_intent("shell pwd"), Intent.AGENT)
 
     def test_override_prefix_with_sudo_allows_and_audits(self):
         from constitution_override import apply_constitution_gate, build_override_context

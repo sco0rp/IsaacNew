@@ -30,7 +30,7 @@ import hashlib
 import logging
 from typing import Optional, Any
 
-from config         import get_config, Level, WORKSPACE
+from config         import get_config, Level, WORKSPACE, is_owner_equivalent_mode
 from constitution_override import apply_constitution_gate, build_override_context
 from privilege      import get_gate, steffen_ctx, isaac_ctx
 from audit          import AuditLog, setup_privilege_audit
@@ -113,7 +113,17 @@ EXPLICIT_COMMAND_PATTERNS = [
         r"^datei\s+(?:read|write|append|list|ls|info)\b",
     ]),
     (Intent.RESEARCH,   [r"^recherche:", r"^recherchiere:"]),
-    (Intent.AGENT,      [r"^agent:", r"^oberfläche:", r"^oberflaeche:"]),
+    (Intent.AGENT,      [
+        r"^agent:",
+        r"^oberfläche:",
+        r"^oberflaeche:",
+        r"^shell\s+",
+        r"^ausführ",
+        r"^ausfuehr",
+        r"^führe aus",
+        r"^fuehre aus",
+        r"^befehl:",
+    ]),
     (Intent.TRANSLATE,  [r"^übersetze", r"^translate", r"^schrift:"]),
     (Intent.LOGIN_ADD,  [r"^login:", r"^credential:", r"^zugangsdaten:"]),
     (Intent.URL_ADD,    [r"^url:", r"^instanz:", r"^füge.*url"]),
@@ -747,8 +757,10 @@ class IsaacKernel:
             metadata,
             build_override_context(
                 prompt=user_input,
-                sudo_active=sudo_aktiv,
+                sudo_active=sudo_aktiv or is_owner_equivalent_mode(),
                 caller_level=Level.STEFFEN,
+                owner_confirmed=is_owner_equivalent_mode(),
+                override_reason="owner_equivalent_mode" if is_owner_equivalent_mode() else "",
                 source="isaac_core",
             ),
         )
@@ -920,7 +932,18 @@ class IsaacKernel:
 
     def _is_agent_request(self, text: str) -> bool:
         tl = (text or "").lower().strip()
-        return tl.startswith(("agent:", "agent ", "oberfläche:", "oberflaeche:"))
+        if tl.startswith(("agent:", "agent ", "oberfläche:", "oberflaeche:")):
+            return True
+        if not is_owner_equivalent_mode():
+            return False
+        return tl.startswith((
+            "shell ",
+            "ausführ",
+            "ausfuehr",
+            "führe aus",
+            "fuehre aus",
+            "befehl:",
+        ))
 
     async def _handle_agent_request(self, text: str) -> str:
         from computer_use import (
@@ -940,6 +963,13 @@ class IsaacKernel:
         body = (text or "").split(":", 1)[-1].strip()
         if text.lower().startswith("oberfläche:") or text.lower().startswith("oberflaeche:"):
             body = text.split(":", 1)[-1].strip()
+        elif is_owner_equivalent_mode():
+            tl = (text or "").lower().strip()
+            if tl.startswith("shell "):
+                body = f"shell {text[6:].strip()}"
+            elif tl.startswith(("ausführ", "ausfuehr", "führe aus", "fuehre aus", "befehl:")):
+                cmd = re.split(r"[:]\s*", text, maxsplit=1)[-1].strip()
+                body = f"shell {cmd}" if cmd else "diagnose"
         try:
             actions = parse_agent_flow(body)
         except Exception as exc:

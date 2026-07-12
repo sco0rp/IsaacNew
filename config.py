@@ -352,7 +352,19 @@ class IsaacConfig:
     def __post_init__(self):
         self._load_provider_settings()
         self._load_runtime_settings()
+        self._apply_owner_equivalent_defaults()
         self._normalize_defaults()
+
+    def _apply_owner_equivalent_defaults(self):
+        """Admin-Modus = Owner-Äquivalenz auf vertrauenswürdigen Geräten."""
+        if not is_owner_equivalent_mode(self):
+            return
+        self.filesystem_access_tier = "full"
+        self.filesystem_full_access = True
+        self.computer_use_enabled = True
+        self.computer_use_live = True
+        self.browser_automation = True
+        self.browser_external_sites = True
 
     @property
     def available_providers(self) -> list[str]:
@@ -680,6 +692,14 @@ class IsaacConfig:
             get_secrets_store().set_secret(ref, value.strip(), kind="provider_api_key")
         except Exception:
             return
+
+
+def is_owner_equivalent_mode(cfg: Optional["IsaacConfig"] = None) -> bool:
+    """True wenn ISAAC_PRIVILEGE_MODE=admin (volle Geräteäquivalenz für Owner)."""
+    target = cfg if cfg is not None else (_config if _config is not None else None)
+    if target is None:
+        return str(os.getenv("ISAAC_PRIVILEGE_MODE", "user") or "user").strip().lower() == "admin"
+    return str(getattr(target, "privilege_mode", "user") or "user").strip().lower() == "admin"
 
 
 _config: Optional[IsaacConfig] = None

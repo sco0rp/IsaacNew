@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from config import BASE_DIR, WORKSPACE, get_config
+from config import BASE_DIR, WORKSPACE, Level, get_config, is_owner_equivalent_mode
 from audit import AuditLog
 
 log = logging.getLogger("Isaac.FileAccess")
@@ -35,6 +35,8 @@ class FileCommand:
 
 
 def access_tier() -> str:
+    if is_owner_equivalent_mode():
+        return "full"
     cfg = get_config()
     tier = str(getattr(cfg, "filesystem_access_tier", "") or "").strip().lower()
     if tier in {"workspace", "project", "full"}:
@@ -68,15 +70,21 @@ def resolve_path(raw_path: str) -> tuple[Optional[Path], str]:
         return None, "Leerer Pfad"
     try:
         expanded = Path(os.path.expanduser(text))
-        candidate = expanded.resolve() if expanded.is_absolute() else (WORKSPACE / expanded).resolve()
+        if expanded.is_absolute():
+            candidate = expanded.resolve()
+        elif is_owner_equivalent_mode():
+            candidate = (Path.cwd() / expanded).resolve()
+        else:
+            candidate = (WORKSPACE / expanded).resolve()
     except Exception:
         return None, "Ungültiger Pfad"
 
     tier = access_tier()
     if tier == "full":
-        for blocked in BLOCKED_PREFIXES:
-            if str(candidate).startswith(blocked):
-                return None, f"Zugriff auf {blocked} ist blockiert"
+        if not is_owner_equivalent_mode():
+            for blocked in BLOCKED_PREFIXES:
+                if str(candidate).startswith(blocked):
+                    return None, f"Zugriff auf {blocked} ist blockiert"
         return candidate, ""
 
     for root in allowed_roots():
@@ -161,7 +169,12 @@ def _constitution_gate_file_operation(cmd: FileCommand) -> tuple[str, bool] | No
     gate = apply_constitution_gate(
         action,
         {"outside_effect": True, "audit_logged": True, "risk": "high"},
-        build_override_context(source="file_access"),
+        build_override_context(
+            source="file_access",
+            caller_level=Level.STEFFEN if is_owner_equivalent_mode() else Level.TASK,
+            owner_confirmed=is_owner_equivalent_mode(),
+            override_reason="owner_equivalent_mode" if is_owner_equivalent_mode() else "",
+        ),
     )
     if gate.get("allowed"):
         return None

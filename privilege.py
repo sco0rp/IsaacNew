@@ -19,7 +19,7 @@ import logging
 from dataclasses import dataclass
 from typing import Callable, Optional, Any
 
-from config import get_config, Level
+from config import get_config, Level, is_owner_equivalent_mode
 
 log = logging.getLogger("Isaac.Privilege")
 
@@ -87,6 +87,8 @@ class PrivilegeGate:
         self._paused:     bool            = False
         self._audit_fn:   Optional[Callable] = None   # wird von audit.py gesetzt
         log.info(f"PrivilegeGate aktiv │ Owner: {get_config().owner_name}")
+        if is_owner_equivalent_mode():
+            log.info("OWNER_EQUIVALENT mode aktiv — volle Geräteäquivalenz (Audit bleibt)")
 
     def set_audit_fn(self, fn: Callable):
         """Audit-Hook registrieren (von audit.py aufgerufen)."""

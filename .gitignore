@@ -17,6 +17,7 @@ monitor.out
 *.bak*
 whisper.cpp/
 opencode-mobile/
+Isaac/
 trans.py
 trans.sh
 trans.sh\\*

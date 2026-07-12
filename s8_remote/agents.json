@@ -1,0 +1,43 @@
+{
+  "agents": [
+    {
+      "id": "isaac",
+      "label": "Isaac Kernel",
+      "type": "http",
+      "base_url": "http://127.0.0.1:8766",
+      "health_path": "/api/monitor/state",
+      "enabled": true
+    },
+    {
+      "id": "isaac_mcp",
+      "label": "Isaac MCP Bridge",
+      "type": "http",
+      "base_url": "http://127.0.0.1:8766",
+      "health_path": "/api/mcp/tools",
+      "enabled": true
+    }
+  ],
+  "shell_globs": [
+    "~/bin/agent-*.sh",
+    "~/s8_remote/agents/*.sh"
+  ],
+  "unix_sockets": [
+    {
+      "id": "local_socket",
+      "label": "Lokaler Unix-Socket (optional)",
+      "path": "~/s8_remote/run/agent.sock",
+      "enabled": false
+    }
+  ],
+  "screen": {
+    "vnc_port": 5900,
+    "rustdesk_hint": "RustDesk-ID in der App ablesen",
+    "ssh_port": 8022
+  },
+  "file_roots": [
+    "~/storage/downloads",
+    "~/storage/shared",
+    "~/Isaac",
+    "~/s8_remote"
+  ]
+}

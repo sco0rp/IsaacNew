@@ -15,14 +15,27 @@ echo "Mode: $MODE"
 echo "Owner: $OWNER"
 echo ""
 
-# Prüfe ob Termux
-if [ ! -d "$PREFIX" ]; then
-    echo "⚠️  Nicht in Termux erkannt. Dieses Script funktioniert in Termux."
+# Erkenne Package Manager
+if command -v pkg &> /dev/null; then
+    PKG_CMD="pkg"
+    echo "📦 Erkannt: Termux (pkg)"
+elif command -v apt &> /dev/null; then
+    PKG_CMD="apt"
+    echo "📦 Erkannt: Linux/Kali/NetHunter (apt)"
+else
+    echo "❌ Fehler: Weder 'pkg' noch 'apt' gefunden. Nicht unterstütztes System."
     exit 1
 fi
 
+echo ""
+
 echo "[1/5] Installing dependencies..."
-pkg install -y python3 git curl
+if [ "$PKG_CMD" = "pkg" ]; then
+    pkg install -y python3 git curl
+elif [ "$PKG_CMD" = "apt" ]; then
+    apt update -qq
+    apt install -y python3 git curl python3-venv
+fi
 
 echo "[2/5] Cloning Isaac..."
 if [ ! -d "Isaac" ]; then

@@ -3256,6 +3256,35 @@ class TestPhase4Connect(unittest.TestCase):
         self.assertIsNotNone(blocked)
         self.assertFalse(blocked.get("ok", True))
 
+    def test_e2_browser_provision_requires_owner(self):
+        from browser import BrowserManager
+
+        mgr = BrowserManager()
+        with patch("browser.is_owner_equivalent_mode", return_value=False):
+            with patch("constitution_override.is_owner_equivalent_mode", return_value=False):
+                msg = mgr._constitution_gate_browser(
+                    "browser_provision",
+                    url="https://console.groq.com/keys",
+                    require_owner=True,
+                )
+        self.assertIsNotNone(msg)
+        self.assertIn("Verfassung", msg)
+
+    def test_e2_browser_automation_allowed_with_warning_path(self):
+        from constitution import get_constitution
+
+        verdict = get_constitution().validate_action(
+            "browser_automation",
+            {
+                "outside_effect": True,
+                "audit_logged": True,
+                "risk": "high",
+                "owner_approved": False,
+            },
+        )
+        self.assertTrue(verdict["allowed"])
+        self.assertIn("high_impact_action", verdict["warnings"])
+
 
 if __name__ == '__main__':
     unittest.main()

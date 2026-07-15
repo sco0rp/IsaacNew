@@ -175,6 +175,17 @@ def _run_cases() -> list[dict]:
         "ok": bool(package_owner.get("allowed")),
         "detail": package_owner,
     })
+
+    browser_provision = c.validate_action(
+        "browser_provision",
+        {"outside_effect": True, "audit_logged": True, "risk": "high", "owner_approved": False},
+    )
+    cases.append({
+        "name": "browser_provision_blocked_without_owner",
+        "ok": (not browser_provision.get("allowed"))
+        and "no_silent_privilege_escalation" in browser_provision.get("blocked_by", []),
+        "detail": browser_provision,
+    })
     return cases
 
 

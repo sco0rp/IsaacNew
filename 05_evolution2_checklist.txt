@@ -47,12 +47,13 @@ E2.0.4 POLICY & CONSTITUTION (Roadmap #1)
 [x] 4.1 Constitution-Gates an Tool/Browser/File (Phase 4)
 [x] 4.2 Governance/Regression-Evals hermetisch ohne ADMIN_MODE
 [x] 4.3 Shell (computer_use + tool_runtime) + Package/Rollback (updater) an Constitution
+[x] 4.4 Browser run_flow + provider provision an Constitution
 
 ──────────────────────────────────────────────────────────────────────────────
 E2.0.5 RELEASE-DISZIPLIN
 ──────────────────────────────────────────────────────────────────────────────
 [x] 5.1 Validierung A–G (replay_eval) grün
-[x] 5.2 unittest (210) + eval_runner (60/60) + sanity_check grün
+[x] 5.2 unittest (212) + eval_runner (61+/60) + sanity_check grün
 [x] 5.3 PR gegen main: https://github.com/glinkasteffen075-bit/Isaac/pull/24
 [!] 5.4 GitHub Actions: Account-Billing-Lock (CI Jobs starten nicht) — lokal validiert
 

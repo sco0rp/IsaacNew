@@ -189,7 +189,12 @@ class Constitution:
             blocked_by.append("protect_user")
         if action == "modify_config" and not metadata.get("owner_approved"):
             blocked_by.append("no_silent_privilege_escalation")
-        if action in {"system_command", "execute_code", "file_delete", "modify_config"} and risk != "low":
+        if action == "browser_provision" and not metadata.get("owner_approved"):
+            blocked_by.append("no_silent_privilege_escalation")
+        if action in {
+            "system_command", "execute_code", "file_delete", "modify_config",
+            "browser_automation", "browser_provision",
+        } and risk != "low":
             warnings.append("high_impact_action")
 
         return {

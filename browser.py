@@ -33,7 +33,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Optional, Callable
 
-from config  import get_config, DATA_DIR
+from config  import Level, get_config, DATA_DIR, is_owner_equivalent_mode
 from audit   import AuditLog
 from privilege import get_gate, isaac_ctx
 from secrets_store import get_secrets_store
@@ -359,6 +359,41 @@ class BrowserManager:
         if url and not self.cfg.browser_external_sites:
             return False
         return True
+
+    def _constitution_gate_browser(
+        self,
+        action: str,
+        *,
+        url: str = "",
+        require_owner: bool = False,
+    ) -> Optional[str]:
+        """Verfassungs-Gate für Browser-Ausführung (outside_effect + optional Owner)."""
+        from constitution_override import apply_constitution_gate, build_override_context
+
+        owner = is_owner_equivalent_mode()
+        metadata = {
+            "outside_effect": True,
+            "audit_logged": True,
+            "risk": "high",
+            "owner_approved": owner,
+            "url": (url or "")[:160],
+        }
+        if require_owner and not owner:
+            metadata["privilege_escalation"] = True
+        gate = apply_constitution_gate(
+            action,
+            metadata,
+            build_override_context(
+                source=f"browser.{action}",
+                caller_level=Level.STEFFEN if owner else Level.TASK,
+                owner_confirmed=owner,
+                override_reason="owner_equivalent_mode" if owner else "",
+            ),
+        )
+        if gate.get("allowed"):
+            return None
+        blocked = ", ".join(gate.get("blocked_by") or [])
+        return f"Verfassung blockiert Browser: {blocked}"
 
     # ── Startup ───────────────────────────────────────────────────────────────
     async def _ensure_runtime(self):
@@ -779,6 +814,15 @@ class BrowserManager:
         if not spec:
             return {"ok": False, "error": f"Kein Browser-Provisioning für Provider '{provider_id}'"}
 
+        constitution_block = self._constitution_gate_browser(
+            "browser_provision",
+            url=str(spec.get("keys_url") or ""),
+            require_owner=True,
+        )
+        if constitution_block:
+            AuditLog.action("Browser", "provision_blocked", constitution_block[:160], erfolg=False)
+            return {"ok": False, "error": constitution_block, "source": "constitution", "provider_id": pid}
+
         ref = (secret_ref or spec["secret_ref"]).strip() or spec["secret_ref"]
         keys_url = spec["keys_url"]
         instance_id = spec["instance_id"]
@@ -902,6 +946,15 @@ class BrowserManager:
         raise ValueError("Browser-Aktion benötigt selector oder text")
 
     async def run_flow(self, instance_id: str, start_url: str, actions: list[dict], name: str = "") -> dict[str, Any]:
+        constitution_block = self._constitution_gate_browser(
+            "browser_automation",
+            url=start_url or "",
+            require_owner=False,
+        )
+        if constitution_block:
+            AuditLog.action("Browser", "flow_blocked", constitution_block[:160], erfolg=False)
+            return {"ok": False, "error": constitution_block, "source": "constitution"}
+
         inst = await self.ensure_instance(instance_id, start_url, name=name or instance_id)
         page = inst.page
         memory: dict[str, str] = {}

@@ -3248,6 +3248,45 @@ class TestPhase4Connect(unittest.TestCase):
         self.assertTrue(preview)
         self.assertIn("hours_until", preview[0])
 
+    def test_goal_store_set_list_done(self):
+        import tempfile
+        from goal_store import GoalStore, parse_goal_command
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = GoalStore(path=Path(tmp) / "goals.json")
+            g = store.add_owner_goal("Autonomie ausbauen", source="explicit")
+            self.assertEqual(g.status, "active")
+            self.assertEqual(len(store.list_goals(status="active")), 1)
+            listed = store.format_goal_list()
+            self.assertIn("Autonomie ausbauen", listed)
+            done = store.set_status(g.id, "done")
+            self.assertEqual(done.status, "done")
+            self.assertEqual(len(store.list_goals(status="active")), 0)
+
+        self.assertEqual(parse_goal_command("Ziel: Lerne Python")["op"], "set")
+        self.assertEqual(parse_goal_command("ziele")["op"], "list")
+        self.assertIsNone(parse_goal_command("Was ist 2+2?"))
+
+    def test_goal_intent_routing_and_handler(self):
+        import tempfile
+        from goal_store import reset_goal_store_for_tests
+        from isaac_core import detect_intent, Intent, IsaacKernel
+
+        self.assertEqual(detect_intent("Ziel: Gerät stabil halten"), Intent.GOAL_SET)
+        self.assertEqual(detect_intent("ziele"), Intent.GOAL_LIST)
+        self.assertEqual(detect_intent("Was ist 2+2?"), Intent.CHAT)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = reset_goal_store_for_tests(Path(tmp) / "g.json")
+            kernel = object.__new__(IsaacKernel)
+            msg = kernel._handle_goal("Ziel: Isaac soll Steffens Ziele verfolgen")
+            self.assertIn("Gespeichert", msg)
+            self.assertEqual(len(store.list_goals(status="active")), 1)
+            listed = kernel._handle_goal_list()
+            self.assertIn("Steffens Ziele", listed)
+            # Normal chat must not be classified as goal
+            self.assertEqual(detect_intent("Erkläre mir das Wetter als Motiv"), Intent.CHAT)
+
     def test_e2_trace_phases_include_evaluation_and_learning(self):
         """Evolution 2.0: DecisionTrace deckt Evaluation und Learning ab."""
         self.assertEqual(TracePhase.EVALUATION.value, "evaluation")

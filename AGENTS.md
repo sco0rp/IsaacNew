@@ -144,19 +144,27 @@ Keine versteckte Tool-Autonomie.
 | **2 — ALIGN** | ✅ | Ein Retrieval-Pfad (`build_retrieval_context`); Kernel besitzt Kontext-Komposition; kein paralleles `build_context()` |
 | **3 — REFINE** | ✅ | `constitution.py`, `self_model.py`, `task_checkpoint.py`, MCP-Grundgerüst, `evals/`, Dashboard offene Fragen |
 | **4 — CONNECT** | ✅ | Vernetzung: Constitution-Grenzen, DecisionTrace, Regelwerk→Retrieval, Procedure→Selection, MCP-Härtung |
-| **Evolution 2.0** | 🔄 | Policy-Enforcement vertiefen, DecisionTrace Evaluation/Learning, Procedure-Selection, Eval-Suite, bounded open-source patterns |
+| **Evolution 2.0** | ✅ | Policy-Enforcement, DecisionTrace Evaluation/Learning, Procedure-Selection, Constitution-Boundaries, Owner-Autonomie (bounded) |
+| **Goal-Autonomie** | 🔄 | Steffen-goal-directed free agency: Goal Store, Subgoals, Motivation, Inquiry/Research an Ziele gebunden |
 
 ### Do NOT start or expand (aktuelle Disziplin)
 
-- Human Layer, instincts, relationship systems, curiosity, autonomy, personality features
+- Human Layer, instincts, relationship systems, **ungebundene** Personality-Show / Companion-Simulation
 - dashboard/UI work (außer blockierende Fixes)
 - cloud/deployment work
 - MCP/subagent architecture expansion
 - broad speculative redesign
-- inquiry/education architecture, freie learning loops, trust modeling
+- trust modeling (gegen Owner)
 - vector-memory redesign, broad persistence redesign
 
-Wenn diese Dateien existieren: unangetastet lassen, außer sie blockieren Runtime-Stabilität direkt.
+### Explizit erlaubt (Owner-Freigabe 2026-07-15)
+
+- **Goal-directed Autonomie** an Steffens Zielen (`goal_store`, Subgoals, Motivation)
+- **Inquiry/Research/Lernen**, sofern an `goal_id` gebunden (kein zielloser Background-Spam)
+- Kein künstliches Ambitions-Self-Limit im Planner bei owner-aligned Goals
+- Systemschutz bleibt: Constitution `protect_user`, Privilege, Audit, kein silent privilege escalation
+
+Wenn Human-Layer-/Personality-Dateien existieren: unangetastet lassen, außer sie blockieren Runtime-Stabilität direkt.
 
 ---
 
@@ -375,8 +383,10 @@ Read AGENTS.md first — it is the canonical instruction set.
 
 MISSION: Improve Isaac incrementally, safely, architecture-aware. Local stateful cognitive kernel — NOT a chatbot wrapper.
 
-CURRENT PHASE: Evolution 2.0 (Phase 1–4 done). Consolidate & deepen policy/trace/procedure.
-Do NOT expand: Human Layer, instincts, personality, dashboard redesign, cloud deploy, MCP/subagent expansion, broad redesign.
+CURRENT PHASE: Goal-directed autonomy (Phase 1–4 + E2.0 done). Owner goals → subgoals → act → learn.
+ALLOWED: goal store, motivation, inquiry/research bound to goal_id, free ambition for owner-aligned goals.
+Do NOT expand: companion/personality theater, trust modeling vs owner, dashboard redesign, cloud deploy, MCP/subagent expansion, broad redesign.
+KEEP: Constitution protect_user, privilege, audit; classification controls routing; executor does not reclassify; normal chat no opportunistic tools.
 
 PIPELINE: classify → retrieve → strategy → task → execute → evaluate → memory update.
 

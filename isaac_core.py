@@ -83,6 +83,8 @@ class Intent:
     PIPELINE    = "pipeline"
     DECOMPOSE   = "decompose"   # Explizite Atomisierung
     FACT_SET    = "fact_set"
+    GOAL_SET    = "goal_set"
+    GOAL_LIST   = "goal_list"
     DIRECTIVE   = "directive"
     STATUS      = "status"
     KI_STATUS   = "ki_status"   # KI-Dialog + Skill-Übersicht
@@ -100,6 +102,25 @@ EXPLICIT_COMMAND_PATTERNS = [
     (Intent.SUDO_OPEN,  [r"^sudo\s+", r"^öffne tür", r"^master key"]),
     (Intent.SUDO_CLOSE, [r"^sudo close$", r"^tür schließen$"]),
     (Intent.FACT_SET,   [r"^korrektur:", r"^fakt:", r"^weiß:"]),
+    (Intent.GOAL_SET,   [
+        r"^ziel\s*:",
+        r"^goal\s*:",
+        r"^mein ziel\s*:",
+        r"^meine ziele\s*:",
+        r"^ziel erledigt\s*:",
+        r"^ziel done\s*:",
+        r"^goal done\s*:",
+        r"^ziel pause\s*:",
+        r"^pausiere ziel\s*:",
+    ]),
+    (Intent.GOAL_LIST,  [
+        r"^ziele$",
+        r"^meine ziele$",
+        r"^list goals$",
+        r"^ziele anzeigen$",
+        r"^zeige ziele$",
+        r"^zeig ziele$",
+    ]),
     (Intent.DIRECTIVE,  [r"^direktive:", r"^immer:", r"^niemals:"]),
     (Intent.BROADCAST,  [r"^broadcast:", r"^alle instanzen:", r"^frage alle"]),
     (Intent.SPLIT,      [r"^split:", r"^aufteilen:"]),
@@ -358,6 +379,8 @@ class IsaacKernel:
         # Direkte Handler (kein Task nötig)
         direkt = {
             Intent.FACT_SET:   self._handle_fact,
+            Intent.GOAL_SET:   self._handle_goal,
+            Intent.GOAL_LIST:  self._handle_goal_list,
             Intent.DIRECTIVE:  self._handle_directive,
             Intent.STATUS:     self._handle_status,
             Intent.KI_STATUS:  self._handle_ki_status,
@@ -1428,6 +1451,51 @@ class IsaacKernel:
             return f"[Fakt] '{m.group(1).strip()}' = '{m.group(2).strip()}'"
         return "[Fakt] Format: korrektur: Feld = Wert"
 
+    def _handle_goal(self, text: str) -> str:
+        from goal_store import get_goal_store, parse_goal_command
+
+        cmd = parse_goal_command(text)
+        store = get_goal_store()
+        if not cmd:
+            return (
+                "[Ziele] Format:\n"
+                "  Ziel: <dein Ziel>\n"
+                "  Ziel erledigt: <titel oder id>\n"
+                "  Ziel pause: <titel oder id>\n"
+                "  ziele"
+            )
+        op = cmd.get("op")
+        if op == "list":
+            return store.format_goal_list()
+        if op == "set":
+            goal = store.add_owner_goal(
+                str(cmd.get("title") or ""),
+                description=str(cmd.get("description") or ""),
+                source="explicit",
+                owner_confirmed=True,
+            )
+            return (
+                f"[Ziele] ✓ Gespeichert: {goal.title}\n"
+                f"id={goal.id} │ status={goal.status} │ prio={goal.priority:.2f}\n"
+                "Isaac verfolgt dieses Owner-Ziel (goal-directed Autonomie)."
+            )
+        if op == "done":
+            g = store.set_status(str(cmd.get("query") or ""), "done")
+            if not g:
+                return f"[Ziele] Nicht gefunden: {cmd.get('query')}"
+            return f"[Ziele] ✓ Erledigt: {g.title} ({g.id})"
+        if op == "pause":
+            g = store.set_status(str(cmd.get("query") or ""), "paused")
+            if not g:
+                return f"[Ziele] Nicht gefunden: {cmd.get('query')}"
+            return f"[Ziele] Pausiert: {g.title} ({g.id})"
+        return "[Ziele] Unbekannte Operation."
+
+    def _handle_goal_list(self, *_args) -> str:
+        from goal_store import get_goal_store
+
+        return get_goal_store().format_goal_list()
+
     async def _handle_directive(self, text: str) -> str:
         m = re.match(r'^(?:direktive|immer|niemals):\s*(.+)$', text, re.I)
         if m:
@@ -1470,6 +1538,13 @@ class IsaacKernel:
             f"Direktiven:  {len(self.gate.active_directives())} aktiv",
             f"",
         ]
+        try:
+            from goal_store import get_goal_store
+
+            lines.append(get_goal_store().format_status_block())
+            lines.append("")
+        except Exception:
+            pass
         for p in sorted(bl, key=lambda x: x["score"], reverse=True):
             lines.append(
                 f"  {p['name']:12} Score:{p['score']:.1f} "
@@ -1502,6 +1577,8 @@ class IsaacKernel:
             Intent.SUDO_OPEN: ("sudo ", "öffne tür", "master key"),
             Intent.SUDO_CLOSE: ("sudo close", "tür schließen"),
             Intent.FACT_SET: ("korrektur:", "fakt:", "weiß:"),
+            Intent.GOAL_SET: ("ziel:", "goal:", "mein ziel:", "meine ziele:", "ziel erledigt:", "ziel pause:"),
+            Intent.GOAL_LIST: ("ziele", "meine ziele", "list goals"),
             Intent.DIRECTIVE: ("direktive:", "immer:", "niemals:"),
             Intent.BROADCAST: ("broadcast:", "alle instanzen:", "frage alle"),
             Intent.SPLIT: ("split:", "aufteilen:"),

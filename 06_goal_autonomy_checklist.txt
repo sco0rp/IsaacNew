@@ -1,0 +1,35 @@
+GOAL-DIRECTED AUTONOMY — CHECKLIST
+==================================
+Status: IN PROGRESS (Slice 0+1 gestartet 2026-07-15)
+Vision: Steffen-Ziele → Isaac Subgoals/Inquiry/Research/Lernen
+Systemschutz bleibt (Constitution/Privilege/Audit).
+
+──────────────────────────────────────────────────────────────────────────────
+S0 KANONIK
+──────────────────────────────────────────────────────────────────────────────
+[x] AGENTS.md: goal-directed Autonomie freigegeben
+[x] Do-Not-Expand: ungebundene Personality/Trust vs Owner bleibt verboten
+
+──────────────────────────────────────────────────────────────────────────────
+S1 GOAL STORE + PROMPT
+──────────────────────────────────────────────────────────────────────────────
+[x] goal_store.py (OwnerGoal + Subgoal + Persistenz JSON)
+[x] Kernel: Ziel: / ziele / Ziel erledigt: / Ziel pause:
+[x] Status-Block mit aktiven Zielen
+[x] Tests routing + store
+[ ] Retrieval: active goals in build_retrieval_context (Slice 1b optional)
+
+──────────────────────────────────────────────────────────────────────────────
+S2 MOTIVATION + TICK (nächster PR)
+──────────────────────────────────────────────────────────────────────────────
+[ ] motivation.py Scoring
+[ ] background_loop Goal-Tick
+[ ] Subgoal auto-create für active goals
+[ ] DecisionTrace motivation phase
+
+──────────────────────────────────────────────────────────────────────────────
+S3+ RESEARCH / LEARN (später)
+──────────────────────────────────────────────────────────────────────────────
+[ ] Inquiry/Research an goal_id
+[ ] Learning/Procedure an goal_id
+[ ] Digest an Owner

@@ -222,6 +222,30 @@ def _run_cases() -> list[dict]:
         "ok": bool(ok_steffen),
         "detail": reason_steffen,
     })
+
+    from constitution_override import CONSTITUTION_BOUNDARIES, critical_action_gate
+
+    inventory_ok = len(CONSTITUTION_BOUNDARIES) >= 10
+    cases.append({
+        "name": "constitution_boundary_inventory_present",
+        "ok": inventory_ok,
+        "detail": {"count": len(CONSTITUTION_BOUNDARIES)},
+    })
+    helper_block = critical_action_gate(
+        "credential_access",
+        source="governance_eval",
+        owner_approved=False,
+    )
+    helper_allow = critical_action_gate(
+        "credential_access",
+        source="governance_eval",
+        owner_approved=True,
+    )
+    cases.append({
+        "name": "critical_action_gate_helper_consistent",
+        "ok": bool(helper_block) and helper_allow is None,
+        "detail": {"block": helper_block, "allow": helper_allow},
+    })
     return cases
 
 

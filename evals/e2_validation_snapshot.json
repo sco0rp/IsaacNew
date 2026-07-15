@@ -1,0 +1,152 @@
+{
+  "recorded_at": "2026-07-15T21:19:48Z",
+  "environment": "local /root/isaacnew",
+  "branch": "feature/evolution-2-consolidate",
+  "isaac_disable_vector_memory": true,
+  "phase": "evolution_2.0",
+  "unittest": {
+    "passed": 217,
+    "total": 217,
+    "ok": true
+  },
+  "eval_runner": {
+    "ok": true,
+    "passed": 66,
+    "total": 66
+  },
+  "routing_ag": [
+    {
+      "id": "A",
+      "ok": true,
+      "detail": {
+        "input": "Hallo Isaac",
+        "interaction_class": "SOCIAL_GREETING",
+        "intent": "chat",
+        "allow_tools": false,
+        "eligible": false,
+        "eligible_reason": "blocked_allow_tools_false",
+        "checks": {
+          "intent": true,
+          "allow_tools": true,
+          "tool_eligible": true,
+          "lightweight_local": true,
+          "local_response": true
+        }
+      }
+    },
+    {
+      "id": "B",
+      "ok": true,
+      "detail": {
+        "input": "Danke",
+        "interaction_class": "SOCIAL_ACKNOWLEDGMENT",
+        "intent": "chat",
+        "allow_tools": false,
+        "eligible": false,
+        "eligible_reason": "blocked_allow_tools_false",
+        "checks": {
+          "intent": true,
+          "allow_tools": true,
+          "tool_eligible": true,
+          "lightweight_local": true,
+          "local_response": true
+        }
+      }
+    },
+    {
+      "id": "C",
+      "ok": true,
+      "detail": {
+        "input": "Was ist 2+2?",
+        "interaction_class": "NORMAL_CHAT",
+        "intent": "chat",
+        "allow_tools": false,
+        "eligible": false,
+        "eligible_reason": "blocked_allow_tools_false",
+        "checks": {
+          "intent": true,
+          "allow_tools": true,
+          "tool_eligible": true,
+          "interaction_class": true
+        }
+      }
+    },
+    {
+      "id": "D",
+      "ok": true,
+      "detail": {
+        "input": "Erkläre mir das Wetter als sprachliches Motiv in Literatur",
+        "interaction_class": "NORMAL_CHAT",
+        "intent": "chat",
+        "allow_tools": false,
+        "eligible": false,
+        "eligible_reason": "blocked_allow_tools_false",
+        "checks": {
+          "intent": true,
+          "allow_tools": true,
+          "tool_eligible": true,
+          "interaction_class": true
+        }
+      }
+    },
+    {
+      "id": "E",
+      "ok": true,
+      "detail": {
+        "input": "Suche: Wetter Berlin",
+        "interaction_class": "TOOL_REQUEST",
+        "intent": "search",
+        "allow_tools": true,
+        "eligible": true,
+        "eligible_reason": "eligible",
+        "checks": {
+          "intent": true,
+          "allow_tools": true,
+          "tool_eligible": true,
+          "interaction_class": true
+        }
+      }
+    },
+    {
+      "id": "F",
+      "ok": true,
+      "detail": {
+        "input": "Browser auf GitHub",
+        "interaction_class": "TOOL_REQUEST",
+        "intent": "browser",
+        "allow_tools": false,
+        "eligible": false,
+        "eligible_reason": "blocked_allow_tools_false",
+        "checks": {
+          "intent": true,
+          "allow_tools": true,
+          "tool_eligible": true,
+          "interaction_class": true
+        }
+      }
+    },
+    {
+      "id": "G",
+      "ok": true,
+      "detail": {
+        "input": "Und?",
+        "interaction_class": "NORMAL_CHAT",
+        "intent": "chat",
+        "allow_tools": false,
+        "eligible": false,
+        "eligible_reason": "blocked_allow_tools_false",
+        "checks": {
+          "intent": true,
+          "allow_tools": true,
+          "tool_eligible": true,
+          "interaction_class": true
+        }
+      }
+    }
+  ],
+  "constitution_boundaries": 12,
+  "notes": [
+    "GitHub Actions blocked by account billing lock — local validation authoritative",
+    "PR https://github.com/glinkasteffen075-bit/Isaac/pull/24"
+  ]
+}

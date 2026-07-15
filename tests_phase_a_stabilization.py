@@ -3353,6 +3353,54 @@ class TestPhase4Connect(unittest.TestCase):
         finally:
             cfg.privilege_mode = prev
 
+    def test_e2_constitution_boundary_inventory_complete(self):
+        """Alle kanonischen Boundaries sind inventarisiert und validierbar."""
+        from constitution import get_constitution
+        from constitution_override import CONSTITUTION_BOUNDARIES, critical_action_gate
+
+        self.assertGreaterEqual(len(CONSTITUTION_BOUNDARIES), 10)
+        modules = {row["module"] for row in CONSTITUTION_BOUNDARIES}
+        for required in (
+            "computer_use", "tool_runtime", "updater", "browser",
+            "credential_access", "privilege", "file_access", "isaac_core",
+        ):
+            self.assertIn(required, modules)
+
+        c = get_constitution()
+        # Owner-pflichtige Actions blocken ohne Freigabe
+        for action in (
+            "modify_config",
+            "browser_provision",
+            "browser_login",
+            "credential_access",
+        ):
+            verdict = c.validate_action(
+                action,
+                {
+                    "outside_effect": True,
+                    "audit_logged": True,
+                    "risk": "high",
+                    "owner_approved": False,
+                },
+            )
+            self.assertFalse(verdict["allowed"], action)
+
+        # critical_action_gate Helper konsistent
+        with patch("constitution_override.is_owner_equivalent_mode", return_value=False):
+            with patch("config.is_owner_equivalent_mode", return_value=False):
+                blocked = critical_action_gate(
+                    "credential_access",
+                    source="test",
+                    owner_approved=False,
+                )
+                allowed = critical_action_gate(
+                    "credential_access",
+                    source="test",
+                    owner_approved=True,
+                )
+        self.assertIsNotNone(blocked)
+        self.assertIsNone(allowed)
+
 
 if __name__ == '__main__':
     unittest.main()

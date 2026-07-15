@@ -183,33 +183,25 @@ def _make_backup(target_dir: Path) -> Path:
 def _constitution_gate_apply_package(package_name: str) -> Optional[str]:
     """Paketanwendung ändert Systemcode — Owner-Freigabe bzw. Admin-Mode nötig."""
     try:
-        from config import Level, is_owner_equivalent_mode
-        from constitution_override import apply_constitution_gate, build_override_context
+        from config import is_owner_equivalent_mode
+        from constitution_override import critical_action_gate
     except Exception as exc:
         log.warning("Constitution-Import für Updater fehlgeschlagen: %s", exc)
         return None
 
-    owner = is_owner_equivalent_mode()
-    gate = apply_constitution_gate(
+    msg = critical_action_gate(
         "modify_config",
-        {
-            "outside_effect": True,
-            "audit_logged": True,
-            "risk": "high",
-            "owner_approved": owner,
-            "package": str(package_name or "")[:120],
-        },
-        build_override_context(
-            source="updater.apply_package",
-            caller_level=Level.STEFFEN if owner else Level.TASK,
-            owner_confirmed=owner,
-            override_reason="owner_equivalent_mode" if owner else "",
-        ),
+        source="updater.apply_package",
+        owner_approved=is_owner_equivalent_mode(),
+        risk="high",
+        extra_metadata={"package": str(package_name or "")[:120]},
     )
-    if gate.get("allowed"):
+    if not msg:
         return None
-    blocked = ", ".join(gate.get("blocked_by") or [])
-    return f"Verfassung blockiert Paket-Anwendung: {blocked}"
+    return msg.replace(
+        "Verfassung blockiert modify_config:",
+        "Verfassung blockiert Paket-Anwendung:",
+    )
 
 
 def apply_package(package_name: str, target_dir: Optional[str] = None, create_backup: bool = True) -> dict:

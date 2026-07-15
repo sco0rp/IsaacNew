@@ -10,7 +10,7 @@ from typing import Any, Optional
 from urllib.parse import urlparse
 
 from audit import AuditLog
-from config import Level, is_owner_equivalent_mode
+from config import is_owner_equivalent_mode
 from ui_automation import UINode, _fold_label, find_nodes
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -55,28 +55,18 @@ def credential_access_allowed() -> bool:
 
 def _constitution_gate_credentials(action: str = "credential_access") -> Optional[str]:
     """Verfassungs-Gate: Credential-Pfade sind Owner-only und auditpflichtig."""
-    from constitution_override import apply_constitution_gate, build_override_context
+    from constitution_override import critical_action_gate
 
-    owner = is_owner_equivalent_mode()
-    gate = apply_constitution_gate(
+    msg = critical_action_gate(
         action,
-        {
-            "outside_effect": True,
-            "audit_logged": True,
-            "risk": "high",
-            "owner_approved": owner,
-        },
-        build_override_context(
-            source=f"credential_access.{action}",
-            caller_level=Level.STEFFEN if owner else Level.TASK,
-            owner_confirmed=owner,
-            override_reason="owner_equivalent_mode" if owner else "",
-        ),
+        source=f"credential_access.{action}",
+        owner_approved=is_owner_equivalent_mode(),
+        risk="high",
     )
-    if gate.get("allowed"):
+    if not msg:
         return None
-    blocked = ", ".join(gate.get("blocked_by") or [])
-    return f"Verfassung blockiert Credential-Zugriff: {blocked}"
+    # Einheitliche User-Meldung beibehalten
+    return msg.replace(f"Verfassung blockiert {action}:", "Verfassung blockiert Credential-Zugriff:")
 
 
 def require_credential_access() -> Optional[str]:

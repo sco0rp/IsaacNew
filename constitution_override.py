@@ -218,3 +218,57 @@ def apply_constitution_gate(
         "override": override,
         "blocked_by": blocked,
     }
+
+
+# Kanonische Ausführungsgrenzen (E2.0 Inventar) — für Tests und Doku.
+CONSTITUTION_BOUNDARIES: tuple[dict[str, Any], ...] = (
+    {"module": "computer_use", "action": "system_command", "owner_required_if": "destructive"},
+    {"module": "tool_runtime", "action": "system_command", "owner_required_if": "shell_destructive"},
+    {"module": "updater", "action": "modify_config", "owner_required_if": "always"},
+    {"module": "browser", "action": "browser_automation", "owner_required_if": "audit_only"},
+    {"module": "browser", "action": "browser_provision", "owner_required_if": "always"},
+    {"module": "browser", "action": "browser_login", "owner_required_if": "always"},
+    {"module": "credential_access", "action": "credential_access", "owner_required_if": "always"},
+    {"module": "privilege", "action": "execute_code", "owner_required_if": "coupled"},
+    {"module": "privilege", "action": "file_delete", "owner_required_if": "destructive"},
+    {"module": "file_access", "action": "file_delete", "owner_required_if": "write_ops"},
+    {"module": "isaac_core", "action": "execute_code", "owner_required_if": "routing"},
+    {"module": "mcp_registry", "action": "tool_invoke", "owner_required_if": "mcp_tools"},
+)
+
+
+def critical_action_gate(
+    action: str,
+    *,
+    source: str,
+    owner_approved: bool | None = None,
+    destructive: bool = False,
+    risk: str = "high",
+    outside_effect: bool = True,
+    extra_metadata: dict[str, Any] | None = None,
+    override_ctx: OwnerOverrideContext | None = None,
+) -> str | None:
+    """Einheitliches Boundary-Gate. None = erlaubt, sonst Fehlertext."""
+    from config import Level, is_owner_equivalent_mode
+
+    owner = is_owner_equivalent_mode() if owner_approved is None else bool(owner_approved)
+    metadata: dict[str, Any] = {
+        "outside_effect": outside_effect,
+        "audit_logged": True,
+        "risk": risk,
+        "owner_approved": owner,
+        "destructive": destructive,
+    }
+    if extra_metadata:
+        metadata.update(extra_metadata)
+    ctx = override_ctx or build_override_context(
+        source=source,
+        caller_level=Level.STEFFEN if owner else Level.TASK,
+        owner_confirmed=owner,
+        override_reason="owner_equivalent_mode" if owner else "",
+    )
+    gate = apply_constitution_gate(action, metadata, ctx)
+    if gate.get("allowed"):
+        return None
+    blocked = ", ".join(gate.get("blocked_by") or gate.get("verdict", {}).get("blocked_by") or [])
+    return f"Verfassung blockiert {action}: {blocked}"

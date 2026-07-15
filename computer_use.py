@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from config import BASE_DIR, WORKSPACE, Level, get_config, is_owner_equivalent_mode
+from config import BASE_DIR, WORKSPACE, get_config, is_owner_equivalent_mode
 from audit import AuditLog
 
 log = logging.getLogger("Isaac.ComputerUse")
@@ -155,29 +155,18 @@ def _blocked_shell(command: str) -> Optional[str]:
 
 def _constitution_gate_shell(command: str) -> Optional[str]:
     """Verfassungs-Gate für Shell: destruktive Befehle ohne Owner blockieren."""
-    from constitution_override import apply_constitution_gate, build_override_context
+    from constitution_override import critical_action_gate
 
-    owner = is_owner_equivalent_mode()
-    gate = apply_constitution_gate(
+    msg = critical_action_gate(
         "system_command",
-        {
-            "outside_effect": True,
-            "audit_logged": True,
-            "risk": "high",
-            "destructive": _is_destructive_shell(command),
-            "owner_approved": owner,
-        },
-        build_override_context(
-            source="computer_use.shell",
-            caller_level=Level.STEFFEN if owner else Level.TASK,
-            owner_confirmed=owner,
-            override_reason="owner_equivalent_mode" if owner else "",
-        ),
+        source="computer_use.shell",
+        owner_approved=is_owner_equivalent_mode(),
+        destructive=_is_destructive_shell(command),
+        risk="high",
     )
-    if gate.get("allowed"):
+    if not msg:
         return None
-    blocked = ", ".join(gate.get("blocked_by") or [])
-    return f"Verfassung blockiert Shell: {blocked}"
+    return msg.replace("Verfassung blockiert system_command:", "Verfassung blockiert Shell:")
 
 
 def parse_agent_body(body: str) -> AgentAction:

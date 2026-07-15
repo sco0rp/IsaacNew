@@ -51,6 +51,7 @@ Ideen als *kleine, lokale Muster* auf bestehende Module abgebildet.
   - Packages: `updater.apply_package` / `rollback_last_backup` → `modify_config` braucht Owner
   - Credentials: `credential_access` + Browser-Auto-Login → Owner-only Constitution
   - Privilege: kritische `authorize()`-Aktionen laufen durch dasselbe Verfassungs-Gate
+  - Konsolidierung: `critical_action_gate()` + `CONSTITUTION_BOUNDARIES` Inventar
 
 ## Auswahlregel für künftige Übernahmen
 

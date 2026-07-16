@@ -29,6 +29,14 @@ from memory   import get_memory
 from executor import get_executor, TaskType, TaskStatus
 from relay    import get_relay
 from logic    import get_logic
+from free_cloud import (
+    apply_free_cloud_defaults,
+    bind_host,
+    free_cloud_enabled,
+    free_hosting_status,
+    http_port as free_http_port,
+    unified_port_enabled,
+)
 
 log = logging.getLogger("Isaac.Monitor")
 _kernel_ref = None
@@ -36,6 +44,17 @@ _kernel_ref = None
 def set_kernel(kernel):
     global _kernel_ref
     _kernel_ref = kernel
+
+
+class _AioWsAdapter:
+    """Adapter so aiohttp WebSocketResponse works with MonitorServer._send/broadcast."""
+
+    def __init__(self, ws, remote=None):
+        self._ws = ws
+        self.remote_address = remote or ("aiohttp", 0)
+
+    async def send(self, data: str):
+        await self._ws.send_str(data)
 
 
 def _is_port_in_use(host: str, port: int) -> bool:
@@ -99,9 +118,25 @@ class MonitorServer:
 
     async def start(self):
         self._loop = asyncio.get_running_loop()
-        self._push = asyncio.create_task(self._metric_pusher())
+        if self._push is None or self._push.done():
+            self._push = asyncio.create_task(self._metric_pusher())
 
-        host = self.cfg.monitor.host
+        # Free-cloud / single-port: WebSocket läuft über aiohttp /ws (Dashboard)
+        if unified_port_enabled():
+            host = bind_host(self.cfg.monitor.host)
+            port = free_http_port(self.cfg.monitor.http_port)
+            self.bound_host = host
+            self.bound_port = port
+            log.info(
+                "WS unified-mode: wss?/ws auf HTTP-Port %s (host=%s free_cloud=%s)",
+                port,
+                host,
+                free_cloud_enabled(),
+            )
+            await asyncio.Future()
+            return
+
+        host = bind_host(self.cfg.monitor.host)
         start_port = int(os.getenv("MONITOR_PORT", str(self.cfg.monitor.port)))
         last_error = None
 
@@ -129,6 +164,39 @@ class MonitorServer:
                 raise
 
         raise last_error or RuntimeError("Kein freier WS-Port gefunden")
+
+    async def handle_aiohttp_ws(self, request):
+        """Same protocol as websockets server, on aiohttp (free single-port hosts)."""
+        from aiohttp import web
+
+        ws = web.WebSocketResponse(max_msg_size=10 * 1024 * 1024)
+        await ws.prepare(request)
+        adapter = _AioWsAdapter(ws, remote=request.remote)
+        self.clients.add(adapter)
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+        if self._push is None or self._push.done():
+            self._push = asyncio.create_task(self._metric_pusher())
+        log.info("Client (aiohttp/ws): %s", request.remote)
+
+        await self._send(adapter, {"typ": "init", "state": self._build_state()})
+        await self._send(adapter, {"typ": "tasks", "tasks": self.executor.all_tasks(100)})
+        await self._send(adapter, {"typ": "audit", "entries": AuditLog.recent(60)})
+
+        try:
+            async for msg in ws:
+                if msg.type == web.WSMsgType.TEXT:
+                    try:
+                        await self._handle_msg(adapter, json.loads(msg.data))
+                    except json.JSONDecodeError:
+                        await self._send(adapter, {"typ": "fehler", "msg": "Ungültiges JSON"})
+                    except Exception as e:
+                        log.error(f"Message-Handler: {e}")
+                elif msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
+                    break
+        finally:
+            self.clients.discard(adapter)
+        return ws
 
     # ── Callbacks (sync, thread-safe) ─────────────────────────────────────────
     def _on_task_update_sync(self, task_dict: dict):
@@ -397,8 +465,10 @@ class MonitorServer:
 # ── HTTP Dashboard ─────────────────────────────────────────────────────────────
 class DashboardHTTPServer:
     def __init__(self, port: int = 8766):
-        self.port      = int(os.getenv("MONITOR_HTTP_PORT", str(port)))
+        # PORT (PaaS) > MONITOR_HTTP_PORT > DASHBOARD_PORT > constructor default
+        self.port      = free_http_port(int(os.getenv("MONITOR_HTTP_PORT", str(port)) or port))
         self.bound_port = None
+        self.bound_host = None
         self.html_path = Path(__file__).parent / "dashboard.html"
 
     async def start(self):
@@ -426,12 +496,32 @@ class DashboardHTTPServer:
                     return web.FileResponse(self.html_path)
                 return web.Response(text="Dashboard nicht gefunden", status=404)
 
+            async def healthz(request):
+                return web.json_response({"ok": True, "service": "isaac", **free_hosting_status()})
+
             async def monitor_config(request):
                 mon = get_monitor()
+                unified = unified_port_enabled()
+                # Same-origin path for free single-port hosts
+                if unified:
+                    return web.json_response({
+                        "ws_host": _public_ws_host(request, mon),
+                        "ws_port": self.bound_port or mon.bound_port,
+                        "ws_path": "/ws",
+                        "ws_same_origin": True,
+                        "http_port": self.bound_port,
+                        "unified_port": True,
+                        "free_cloud": free_cloud_enabled(),
+                        "ws_port_candidates": [],
+                    })
                 return web.json_response({
                     "ws_host": _public_ws_host(request, mon),
                     "ws_port": mon.bound_port,
+                    "ws_path": None,
+                    "ws_same_origin": False,
                     "http_port": self.bound_port,
+                    "unified_port": False,
+                    "free_cloud": free_cloud_enabled(),
                     "ws_port_candidates": list(range(int(os.getenv("MONITOR_PORT", str(get_config().monitor.port))), int(os.getenv("MONITOR_PORT", str(get_config().monitor.port))) + 10)),
                 })
 
@@ -1025,18 +1115,38 @@ class DashboardHTTPServer:
             app.router.add_post("/api/update/rollback", updater_rollback)
             app.router.add_get("/api/update/status", updater_status_api)
             app.router.add_get("/api/monitor/state", monitor_state)
+            app.router.add_get("/healthz", healthz)
+            app.router.add_get("/health", healthz)
+
+            # Unified free-cloud WS on same HTTP port
+            mon = get_monitor()
+
+            async def ws_endpoint(request):
+                return await mon.handle_aiohttp_ws(request)
+
+            if unified_port_enabled():
+                app.router.add_get("/ws", ws_endpoint)
+
             runner = web.AppRunner(app)
             await runner.setup()
 
+            host = bind_host("localhost")
             last_error = None
-            for offset in range(0, 10):
-                port = self.port + offset
+            # On PaaS PORT must be exact — no offset probing
+            offsets = [0] if (os.getenv("PORT") or "").strip().isdigit() or free_cloud_enabled() else range(0, 10)
+            for offset in offsets:
+                port = self.port + int(offset)
                 try:
-                    await web.TCPSite(runner, "localhost", port).start()
+                    await web.TCPSite(runner, host, port).start()
                     self.bound_port = port
+                    self.bound_host = host
+                    mon.bound_host = host
+                    mon.bound_port = port if unified_port_enabled() else mon.bound_port
                     if offset:
                         log.warning(f"Dashboard-Port {self.port} belegt → Fallback auf {port}")
-                    log.info(f"Dashboard: http://localhost:{port}")
+                    log.info(f"Dashboard: http://{host}:{port}")
+                    if unified_port_enabled():
+                        log.info(f"Dashboard WS: ws://{host}:{port}/ws")
                     return
                 except OSError as e:
                     last_error = e

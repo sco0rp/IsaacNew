@@ -247,11 +247,13 @@ def _provider_defaults_from_env() -> dict[str, ProviderConfig]:
         ),
         "gemini": ProviderConfig(
             provider_id="gemini",
-            display_name="Gemini",
+            display_name="Gemini (AI Studio)",
             provider_type="gemini",
-            api_key=os.getenv("GOOGLE_API_KEY", ""),
+            # GOOGLE_API_KEY (AI Studio) oder GEMINI_API_KEY — beide akzeptiert
+            api_key=(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""),
             base_url=os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/models"),
-            model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+            # Lite-latest: stabil für AI-Studio-Keys; 2.5-flash oft gesperrt, 3-flash braucht hohes Token-Budget
+            model=os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest"),
             rpm=15,
             tpm=32_000,
             timeout=60,
@@ -402,12 +404,56 @@ class IsaacConfig:
         self._load_provider_settings()
         self._load_runtime_settings()
         self._apply_owner_equivalent_defaults()
+        self._apply_env_runtime_overrides()
+        self._apply_free_cloud_runtime_guards()
         self._normalize_defaults()
+
+    def _apply_env_runtime_overrides(self):
+        """Explizite Env-Flags überschreiben runtime_settings (z. B. Free-Cloud)."""
+        mapping = {
+            "ISAAC_BROWSER_AUTOMATION": "browser_automation",
+            "ISAAC_BROWSER_EXTERNAL_SITES": "browser_external_sites",
+            "ISAAC_AUTO_PROVISION_PROVIDERS": "auto_provision_providers",
+            "ISAAC_AUTO_PROVISION_ALL_PROVIDERS": "auto_provision_all_providers",
+            "ISAAC_COMPUTER_USE_ENABLED": "computer_use_enabled",
+            "ISAAC_COMPUTER_USE_LIVE": "computer_use_live",
+            "ISAAC_FREE_ONLY_PROVIDERS": "free_only_providers",
+        }
+        for env_key, attr in mapping.items():
+            raw = os.getenv(env_key)
+            if raw is None or str(raw).strip() == "":
+                continue
+            setattr(self, attr, _bool(raw, getattr(self, attr)))
+
+    def _apply_free_cloud_runtime_guards(self):
+        """Free PaaS: kein Browser-Key-Bootstrap, kein Admin-Override."""
+        try:
+            from free_cloud import free_cloud_enabled
+            if not free_cloud_enabled():
+                return
+        except Exception:
+            return
+        self.browser_automation = False
+        self.browser_external_sites = False
+        self.auto_provision_providers = False
+        self.auto_provision_all_providers = False
+        self.computer_use_enabled = False
+        # user-Mode: verhindert erneutes Force-Enable von Browser im Owner-Pfad
+        if (self.privilege_mode or "").lower() == "admin":
+            # Free public host: kein stiller Admin
+            self.privilege_mode = "user"
 
     def _apply_owner_equivalent_defaults(self):
         """Admin-Modus = Owner-Äquivalenz auf vertrauenswürdigen Geräten."""
         if not is_owner_equivalent_mode(self):
             return
+        # Free public hosts must not force browser/key hunting (breaks normal chat)
+        try:
+            from free_cloud import free_cloud_enabled
+            if free_cloud_enabled():
+                return
+        except Exception:
+            pass
         self.filesystem_access_tier = "full"
         self.filesystem_full_access = True
         self.computer_use_enabled = True

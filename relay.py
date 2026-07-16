@@ -429,11 +429,23 @@ class AsyncRelay:
     async def _gemini(self, cfg: ProviderConfig, prompt: str, system: str, model_override: Optional[str] = None) -> tuple[str, int]:
         if not cfg.api_key:
             raise ProviderErr("Gemini: API-Key fehlt")
-        url = f"{cfg.base_url}/{model_override or cfg.model}:generateContent?key={cfg.api_key}"
+        model = (model_override or cfg.model or "").strip()
+        if model.startswith("models/"):
+            model = model[len("models/"):]
+        base = (cfg.base_url or "https://generativelanguage.googleapis.com/v1beta/models").rstrip("/")
+        url = f"{base}/{model}:generateContent?key={cfg.api_key}"
+        # AI Studio / Generative Language API: systemInstruction + role-aware contents
+        payload: dict = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            # Thinking-Modelle (Gemini 3.x) verbrauchen Output-Tokens intern — Budget nicht zu knapp
+            "generationConfig": {"maxOutputTokens": 2048, "temperature": 0.3},
+        }
+        if system and system.strip():
+            payload["systemInstruction"] = {"parts": [{"text": system.strip()}]}
         session = await self._get_session()
         async with session.post(
             url,
-            json={"contents": [{"parts": [{"text": f"{system}\n\n{prompt}"}]}], "generationConfig": {"maxOutputTokens": 1200, "temperature": 0.3}},
+            json=payload,
             timeout=aiohttp.ClientTimeout(total=cfg.timeout),
         ) as r:
             if r.status == 429:
@@ -443,12 +455,29 @@ class AsyncRelay:
                 raise ProviderErr(f"Gemini {r.status}: {txt[:120]}")
             data = await r.json()
             try:
-                content = data["candidates"][0]["content"]["parts"][0]["text"]
+                parts = data["candidates"][0]["content"]["parts"]
+                # Gemini-3 kann thought-Parts liefern; nur sichtbaren Text nehmen
+                texts = []
+                for p in parts:
+                    if not isinstance(p, dict):
+                        continue
+                    if p.get("thought") is True:
+                        continue
+                    t = p.get("text")
+                    if t:
+                        texts.append(t)
+                content = "".join(texts).strip()
+                if not content:
+                    # Fallback: alle Textteile inkl. thought
+                    content = "".join(
+                        (p.get("text") or "") for p in parts if isinstance(p, dict)
+                    ).strip()
+                if not content:
+                    raise ValueError("empty parts")
             except Exception:
                 raise ProviderErr("Gemini: ungültige Antwortstruktur")
             usage = (((data.get("usageMetadata") or {}).get("totalTokenCount")) or RateLimiter.estimate_tokens(content))
             return content, usage
-
     async def _cohere(self, cfg: ProviderConfig, prompt: str, system: str, model_override: Optional[str] = None) -> tuple[str, int]:
         if not cfg.api_key:
             raise ProviderErr("Cohere: API-Key fehlt")

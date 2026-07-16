@@ -1428,6 +1428,17 @@ class IsaacKernel:
 
     def _ensure_provider_connect_directive(self):
         try:
+            # Free-Cloud / ohne Browser: keine Key-Jagd-Direktive (vergiftet sonst jeden Chat)
+            try:
+                from free_cloud import free_cloud_enabled
+                if free_cloud_enabled():
+                    return
+            except Exception:
+                pass
+            if not getattr(self.cfg, "browser_automation", True):
+                return
+            if not getattr(self.cfg, "auto_provision_providers", True):
+                return
             active = {d.get("id") for d in self.memory.get_directives()}
             if "provider_auto_connect_all" in active:
                 return
@@ -1436,7 +1447,9 @@ class IsaacKernel:
                 (
                     "Beschaffe und verbinde fehlende Provider-API-Keys selbstständig "
                     "über den Browser (alle unterstützten Provider), wenn Browser-Automation "
-                    "aktiv ist und ein Login vorhanden ist."
+                    "aktiv ist und ein Login vorhanden ist. "
+                    "Wende diese Direktive nur an, wenn der Nutzer explizit Keys/Provider anspricht — "
+                    "nicht bei normalen Chat-Fragen."
                 ),
                 priority=9,
             )
@@ -1444,11 +1457,39 @@ class IsaacKernel:
         except Exception as e:
             log.warning("Provider-Direktive konnte nicht gesetzt werden: %s", e)
 
+    def _clear_provider_connect_directive_if_idle(self):
+        """Entfernt Key-Bootstrap-Direktive wenn Browser/Provisioning aus ist (z. B. Free-Cloud)."""
+        try:
+            from free_cloud import free_cloud_enabled
+            idle = free_cloud_enabled() or not getattr(self.cfg, "browser_automation", True) \
+                or not getattr(self.cfg, "auto_provision_providers", True)
+            if not idle:
+                return
+            try:
+                self.memory.revoke_directive("provider_auto_connect_all")
+            except Exception:
+                pass
+            try:
+                self.gate.revoke_directive("provider_auto_connect_all")
+            except Exception:
+                pass
+        except Exception as e:
+            log.debug("Provider-Direktive-Cleanup: %s", e)
+
     async def bootstrap_providers(self):
         if not getattr(self.cfg, "auto_provision_providers", True):
+            self._clear_provider_connect_directive_if_idle()
             return
         if not self.cfg.browser_automation:
+            self._clear_provider_connect_directive_if_idle()
             return
+        try:
+            from free_cloud import free_cloud_enabled
+            if free_cloud_enabled():
+                self._clear_provider_connect_directive_if_idle()
+                return
+        except Exception:
+            pass
         self._ensure_provider_connect_directive()
         try:
             from browser import get_browser
@@ -2066,21 +2107,68 @@ class IsaacKernel:
     def _build_system(self, sudo_aktiv: bool, emp,
                       wissen_kontext: str = "",
                       strategy_note: str = "") -> str:
-        basis = (
-            f"Du bist Isaac v{self.VERSION}, ein autonomes KI-System.\n"
-            f"Systemeigentümer: {self.cfg.owner_name} (höchste Autorität).\n"
-            f"Steffens Aussagen und Befehle werden immer als bestmögliche "
-            f"Absicht interpretiert — ohne Ausnahme.\n"
-        )
+        try:
+            from free_cloud import free_cloud_enabled
+            _free = free_cloud_enabled()
+        except Exception:
+            _free = False
+
+        owner = self.cfg.owner_name
+        if _free:
+            # Schlanker Prompt: Free-LLMs paraphrasieren sonst Owner/Regeln als Essay
+            basis = (
+                f"Du bist Isaac v{self.VERSION}, der persönliche Assistent von {owner}.\n"
+                f"Antworte auf die aktuelle Nutzerfrage: konkret, knapp (meist 1–3 Absätze), hilfreich.\n"
+                f"Verbotene Standard-Antworten (außer der Nutzer fragt explizit danach):\n"
+                f"- Essays über Eigentum, Kontrolle, Autorität, Verantwortung von {owner}\n"
+                f"- API-Keys, Provider-Provisioning, Browser-Automation als Hauptthema\n"
+                f"- Wiederholung von Systemregeln statt Inhalt\n"
+                f"Spaß/Hypothesen: klar und sicher beantworten, nicht moralisieren.\n"
+                f"Bei echten Gefahr-/Betrugsthemen: kurz warnen, sonst normal chatten.\n"
+            )
+        else:
+            basis = (
+                f"Du bist Isaac v{self.VERSION}, ein persönliches KI-System für {owner}.\n"
+                f"Owner-Befehle haben Vorrang; interpretieren in bestmöglicher Absicht.\n"
+                f"Beantworte die aktuelle Nutzerfrage zuerst und konkret. "
+                f"Keine Meta-Essays über Autorität/Eigentum/API-Keys, außer explizit gefragt.\n"
+            )
         if sudo_aktiv:
             basis += self.sudo.get_authority_prefix()
 
-        # Aktive Regeln einbauen
-        regeln = self.regelwerk.aktive_regeln_als_kontext()
-        if regeln:
-            basis += f"\n{regeln}\n"
+        # Regeln: free-cloud nur Kurzform (sonst paraphrasiert das Modell „Steffen-Kontrolle“)
+        if _free:
+            basis += (
+                f"\n[Regeln kurz] {owner} vertrauen; keine Tools ohne Bedarf; "
+                f"Qualität vor Länge; keine Regel-Wiederholung.\n"
+            )
+        else:
+            regeln = self.regelwerk.aktive_regeln_als_kontext()
+            if regeln:
+                basis += f"\n{regeln}\n"
 
-        direktiven = self.gate.directives_as_context()
+        # Provider-Key-Direktive nicht in jeden Prompt mischen (Chat-Hijack)
+        if _free or not getattr(self.cfg, "browser_automation", True):
+            direktiven = ""
+            try:
+                active = self.gate.active_directives() if hasattr(self.gate, "active_directives") else []
+                lines = []
+                for d in active or []:
+                    did = str(getattr(d, "id", "") or (d.get("id") if isinstance(d, dict) else "") or "")
+                    if did == "provider_auto_connect_all":
+                        continue
+                    text = getattr(d, "text", None) or (d.get("text") if isinstance(d, dict) else str(d))
+                    if text and "Provider-API" not in text and "API-Keys" not in text:
+                        lines.append(f"- {text}")
+                if lines:
+                    direktiven = "Aktive Direktiven:\n" + "\n".join(lines)
+            except Exception:
+                direktiven = ""
+        else:
+            direktiven = self.gate.directives_as_context()
+            if "provider_auto_connect_all" in (direktiven or ""):
+                # keep other directives if mixed — strip key-hunt block roughly
+                pass
         if direktiven:
             basis += f"\n{direktiven}\n"
 
@@ -2094,10 +2182,10 @@ class IsaacKernel:
             basis += f"\n{strategy_note}"
 
         cfg = getattr(self, "cfg", None) or get_config()
-        if cfg.style_mode == "professional":
+        if cfg.style_mode == "professional" or _free:
             basis += (
-                "\n[Stilmodus] professional: Antworte klar, präzise, lösungsorientiert. "
-                "Keine Ironie oder Sarkasmus."
+                "\n[Stil] Klar, präzise, lösungsorientiert. Keine Ironie-Pflicht. "
+                "Keine Bullet-Essay-Zusammenfassung über dich selbst."
             )
         else:
             basis += (
@@ -2106,9 +2194,11 @@ class IsaacKernel:
                 "Kein Sarkasmus bei Fehlerfrust, Sicherheitsthemen oder komplexem Debugging."
             )
 
-        from value_decisions import get_decision_engine
-        decisions = get_decision_engine().decide_behavior()
-        basis = get_decision_engine().apply_to_system_prompt(basis, decisions)
+        # Value-engine on free cloud adds "proactive next steps" padding — skip
+        if not _free:
+            from value_decisions import get_decision_engine
+            decisions = get_decision_engine().decide_behavior()
+            basis = get_decision_engine().apply_to_system_prompt(basis, decisions)
         return basis
 
     def _provider_hint(self, text: str) -> Optional[str]:
@@ -2133,7 +2223,21 @@ async def main():
         datefmt = "%H:%M:%S",
     )
 
+    # Free-tier PaaS (Render/HF Spaces/Fly free): bind 0.0.0.0, unified /ws, no vector mem
+    try:
+        from free_cloud import apply_free_cloud_defaults, free_cloud_enabled, free_hosting_status
+        applied = apply_free_cloud_defaults()
+        if free_cloud_enabled():
+            logging.getLogger("Isaac").info("Free-cloud mode: %s applied=%s", free_hosting_status(), applied)
+    except Exception as e:
+        logging.getLogger("Isaac").warning("free_cloud defaults: %s", e)
+
     kernel = IsaacKernel()
+    # Free-Cloud / no-browser: Key-Jagd-Direktive entfernen (sonst redet jeder Chat über API-Keys)
+    try:
+        kernel._clear_provider_connect_directive_if_idle()
+    except Exception:
+        pass
 
     # Worker + Background + Monitor
     await kernel.executor.start_worker(concurrency=4)
@@ -2147,12 +2251,25 @@ async def main():
     http = DashboardHTTPServer(port=kernel.cfg.monitor.http_port)
     await http.start()
 
-    print("""
+    try:
+        from free_cloud import free_cloud_enabled, http_port as free_http_port, bind_host, unified_port_enabled
+        _host = bind_host("localhost")
+        _http = free_http_port(kernel.cfg.monitor.http_port)
+        if free_cloud_enabled() or unified_port_enabled():
+            dash_line = f"http://{_host}:{_http}"
+            ws_line = f"ws://{_host}:{_http}/ws  (unified)"
+        else:
+            dash_line = f"http://localhost:{kernel.cfg.monitor.http_port}"
+            ws_line = f"ws://localhost:{kernel.cfg.monitor.port}"
+    except Exception:
+        dash_line = "http://localhost:8766"
+        ws_line = "ws://localhost:8765"
+    print(f"""
 ╔══════════════════════════════════════════════════════╗
 ║  ISAAC v5.3 – Unified OS                            ║
 ╠══════════════════════════════════════════════════════╣
-║  Dashboard:   http://localhost:8766                  ║
-║  WebSocket:   ws://localhost:8765                    ║
+║  Dashboard:   {dash_line:<40} ║
+║  WebSocket:   {ws_line:<40} ║
 ╠══════════════════════════════════════════════════════╣
 ║  SUDO (Master-Tür):                                  ║
 ║    sudo PASSWORT   → Vollzugriff öffnen             ║

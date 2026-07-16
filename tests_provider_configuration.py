@@ -32,6 +32,20 @@ class TestProviderConfiguration(unittest.TestCase):
         self.assertEqual(defaults["ollama"].model, "qwen2.5:1.5b")
         self.assertEqual(defaults["ollama"].provider_type, "ollama")
 
+    def test_gemini_defaults_ai_studio_model_and_key_fallback(self):
+        env = {
+            "GEMINI_API_KEY": "test-gemini-key",
+            "GOOGLE_API_KEY": "",
+        }
+        with patch.dict("os.environ", env, clear=False):
+            os.environ.pop("GEMINI_MODEL", None)
+            defaults = config_module._provider_defaults_from_env()
+        gemini = defaults["gemini"]
+        self.assertEqual(gemini.provider_type, "gemini")
+        self.assertEqual(gemini.model, "gemini-flash-lite-latest")
+        self.assertEqual(gemini.api_key, "test-gemini-key")
+        self.assertIn("generativelanguage.googleapis.com", gemini.base_url)
+
     def test_local_openai_compat_provider_default_no_api_key(self):
         with patch.dict("os.environ", {}, clear=True):
             defaults = config_module._provider_defaults_from_env()

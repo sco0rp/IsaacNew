@@ -700,6 +700,7 @@ function setWsDebugStatus(text) {
 
 async function getWsTargets() {
   const ports = [];
+  let sameOriginPath = null;
   try {
     const res = await fetch('/monitor_config', { cache: 'no-store' });
     if (res.ok) {
@@ -707,15 +708,24 @@ async function getWsTargets() {
       if (cfg.ws_host) WS_HOST_OVERRIDE = cfg.ws_host;
       if (cfg.ws_port) ports.push(cfg.ws_port);
       if (Array.isArray(cfg.ws_port_candidates)) ports.push(...cfg.ws_port_candidates);
+      // Free-cloud single-port: same-origin /ws (no second public port)
+      if (cfg.ws_same_origin || cfg.ws_path) {
+        sameOriginPath = cfg.ws_path || '/ws';
+      }
     }
   } catch (_) {}
+
+  if (sameOriginPath) {
+    // Prefer same-origin WebSocket (Render/HF Spaces/Fly free, Codespaces port-forward)
+    return [{ host: location.hostname, port: location.port || (location.protocol === 'https:' ? 443 : 80), path: sameOriginPath, sameOrigin: true }];
+  }
 
   ports.push(DEFAULT_WS_PORT);
   for (let p = DEFAULT_WS_PORT; p < DEFAULT_WS_PORT + 10; p++) ports.push(p);
 
   const uniquePorts = [...new Set(ports.filter(Boolean))];
   const host = WS_HOST_OVERRIDE || WS_HOST;
-  return uniquePorts.map((port) => ({ host, port }));
+  return uniquePorts.map((port) => ({ host, port, path: null, sameOrigin: false }));
 }
 
 function scheduleReconnect() {
@@ -731,9 +741,21 @@ async function connect() {
   wsTriedTargets = targets;
 
   for (const target of targets) {
-    const url = `${WS_PROTO}://${target.host}:${target.port}`;
+    let url;
+    if (target.sameOrigin || target.path) {
+      const portPart = target.port ? `:${target.port}` : '';
+      // When page is on default 80/443, location.port is empty — keep empty
+      const host = target.host || location.hostname;
+      const path = target.path || '/ws';
+      if (!target.port || String(target.port) === '80' || String(target.port) === '443') {
+        url = `${WS_PROTO}://${host}${path}`;
+      } else {
+        url = `${WS_PROTO}://${host}:${target.port}${path}`;
+      }
+    } else {
+      url = `${WS_PROTO}://${target.host}:${target.port}`;
+    }
     setWsDebugStatus(`WS connecting: ${url}`);
-
     try {
       const ws = new WebSocket(url);
       const opened = await new Promise((resolve) => {

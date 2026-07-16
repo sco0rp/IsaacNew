@@ -23,5 +23,10 @@ chromadb>=0.4.0
 # Schnelle kostenlose API-Alternative:
 # GROQ_API_KEY in .env → https://console.groq.com (kostenlos)
 
+# Google AI Studio / Gemini (optional — Runtime nutzt aiohttp REST in relay.py)
+# GOOGLE_API_KEY in .env → https://aistudio.google.com/apikey
+# Setup: bash scripts/setup_google_stack.sh
+# google-genai>=1.0.0
+
 # Dashboard/API
 Flask>=3.0.0

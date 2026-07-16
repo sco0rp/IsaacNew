@@ -1,0 +1,6 @@
+# Isaac — Free-cloud / zero-billing dependencies (slim)
+# No Playwright, no ChromaDB — keeps image small for free PaaS.
+
+aiohttp>=3.9.0
+websockets>=12.0
+python-dotenv>=1.0.0

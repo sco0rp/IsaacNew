@@ -1,0 +1,45 @@
+# Render Blueprint — Isaac free (zero billing)
+# https://dashboard.render.com → New → Blueprint
+# Repo: sco0rp/IsaacNew  |  Branch: feature/google-aistudio-gemini-stack (oder main nach Merge)
+#
+# Nach dem Deploy: Environment → GROQ_API_KEY setzen (Secret)
+
+services:
+  - type: web
+    name: isaac-free
+    runtime: docker
+    plan: free
+    branch: feature/google-aistudio-gemini-stack
+    dockerfilePath: ./Dockerfile.free
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      - key: ISAAC_FREE_CLOUD
+        value: "1"
+      - key: ISAAC_UNIFIED_PORT
+        value: "1"
+      - key: ISAAC_BIND_HOST
+        value: "0.0.0.0"
+      - key: ISAAC_DISABLE_VECTOR_MEMORY
+        value: "1"
+      - key: ISAAC_BROWSER_AUTOMATION
+        value: "0"
+      - key: ISAAC_AUTO_PROVISION_PROVIDERS
+        value: "0"
+      - key: ISAAC_AUTO_PROVISION_ALL_PROVIDERS
+        value: "0"
+      - key: ISAAC_PRIVILEGE_MODE
+        value: user
+      - key: ACTIVE_PROVIDER
+        value: groq
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      # Secrets — im Dashboard manuell setzen (nicht im Git):
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false

@@ -1,0 +1,33 @@
+# Isaac free-cloud image (no billing, slim deps)
+# Suitable for: Render free, Hugging Face Spaces (Docker), Fly free allowance, Railway trial
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    ISAAC_FREE_CLOUD=1 \
+    ISAAC_UNIFIED_PORT=1 \
+    ISAAC_BIND_HOST=0.0.0.0 \
+    ISAAC_DISABLE_VECTOR_MEMORY=1 \
+    ACTIVE_PROVIDER=groq \
+    PORT=7860
+
+WORKDIR /app
+
+COPY requirements-free.txt .
+RUN pip install --no-cache-dir -r requirements-free.txt
+
+# App source (avoid shipping local .venv / secrets)
+COPY *.py ./
+COPY dashboard.html ./
+COPY docs ./docs
+COPY scripts ./scripts
+# data dir created at runtime (empty SQLite)
+RUN mkdir -p data logs workspace
+
+EXPOSE 7860
+
+# Health: GET /healthz
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD python -c "import os,urllib.request; p=os.environ.get('PORT','7860'); urllib.request.urlopen(f'http://127.0.0.1:{p}/healthz', timeout=3)"
+
+CMD ["python", "isaac_core.py"]

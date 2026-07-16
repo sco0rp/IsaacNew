@@ -431,8 +431,8 @@ textarea,input{font-size:16px;}
       <div class="tab-content" id="tab-directives">
         <div id="directives-list">
           <div class="directive-add-form">
-            <input id="dir-input" type="text" placeholder="Neue Direktive: z.B. Antworte immer auf Deutsch">
-            <button class="hbtn" onclick="addDirective()">+ Direktive setzen</button>
+            <input id="dir-input" type="text" placeholder="Neue Direktive: z.B. Antworte immer auf Deutsch" aria-label="Neue Direktive">
+            <button class="hbtn" type="button" onclick="addDirective()">+ Direktive setzen</button>
           </div>
           <div id="dir-rows"></div>
         </div>
@@ -587,27 +587,27 @@ textarea,input{font-size:16px;}
     <div class="toggle-card-grid">
       <div class="ctrl-card">
         <div class="ctrl-copy"><strong>Pause / Resume</strong><span>Stoppt oder setzt die Task-Orchestrierung fort.</span></div>
-        <label class="switch"><input type="checkbox" id="orchestrator-toggle"><span class="slider"></span></label>
+        <label class="switch"><input type="checkbox" id="orchestrator-toggle" aria-label="Pause / Resume — Task-Orchestrierung"><span class="slider" aria-hidden="true"></span></label>
       </div>
       <div class="ctrl-card">
         <div class="ctrl-copy"><strong>Dateisystem Vollzugriff</strong><span>Erlaubt Dateioperationen auch außerhalb des Workspace.</span></div>
-        <label class="switch"><input type="checkbox" id="filesystem-toggle"><span class="slider"></span></label>
+        <label class="switch"><input type="checkbox" id="filesystem-toggle" aria-label="Dateisystem Vollzugriff"><span class="slider" aria-hidden="true"></span></label>
       </div>
       <div class="ctrl-card">
         <div class="ctrl-copy"><strong>Browser-Automation</strong><span>Aktiviert Playwright-basierte Web-Aufgaben und Site-Steuerung.</span></div>
-        <label class="switch"><input type="checkbox" id="browser-toggle"><span class="slider"></span></label>
+        <label class="switch"><input type="checkbox" id="browser-toggle" aria-label="Browser-Automation"><span class="slider" aria-hidden="true"></span></label>
       </div>
       <div class="ctrl-card">
         <div class="ctrl-copy"><strong>Externe Browser-Ziele</strong><span>Erlaubt Isaac das Öffnen und Bedienen externer Websites.</span></div>
-        <label class="switch"><input type="checkbox" id="browser-external-toggle"><span class="slider"></span></label>
+        <label class="switch"><input type="checkbox" id="browser-external-toggle" aria-label="Externe Browser-Ziele"><span class="slider" aria-hidden="true"></span></label>
       </div>
       <div class="ctrl-card">
         <div class="ctrl-copy"><strong>Free-Only Provider</strong><span>Beschränkt Relay und Fallbacks auf kostenlose Modellpfade.</span></div>
-        <label class="switch"><input type="checkbox" id="free-only-toggle"><span class="slider"></span></label>
+        <label class="switch"><input type="checkbox" id="free-only-toggle" aria-label="Free-Only Provider"><span class="slider" aria-hidden="true"></span></label>
       </div>
       <div class="ctrl-card">
         <div class="ctrl-copy"><strong>Multi-Tool Modus</strong><span>Isaac darf mehrere Tools innerhalb derselben Aufgabe kombinieren.</span></div>
-        <label class="switch"><input type="checkbox" id="multi-tool-toggle"><span class="slider"></span></label>
+        <label class="switch"><input type="checkbox" id="multi-tool-toggle" aria-label="Multi-Tool Modus"><span class="slider" aria-hidden="true"></span></label>
       </div>
     </div>
 

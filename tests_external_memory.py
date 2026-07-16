@@ -299,21 +299,63 @@ class TestCogneeCloudAdapter(unittest.TestCase):
 
         captured = {}
 
-        def capture(method, path, body=None, timeout=None):
+        def capture(method, path, *, fields=None, files=None, timeout=None):
             captured["method"] = method
             captured["path"] = path
-            captured["body"] = body
+            captured["fields"] = fields
+            captured["files"] = files
             return {"ok": True}
 
-        adapter._cloud_request = capture  # type: ignore[method-assign]
+        adapter._cloud_request_multipart = capture  # type: ignore[method-assign]
         ok = adapter.remember(
             [{"role": "user", "content": "Isaac mag lokalen Datenschutz"}]
         )
         self.assertTrue(ok)
         self.assertEqual(captured.get("method"), "POST")
         self.assertEqual(captured.get("path"), "/api/v1/add")
-        self.assertEqual(captured["body"].get("datasetName"), "isaac")
-        self.assertIn("Datenschutz", captured["body"].get("data", ""))
+        self.assertEqual((captured.get("fields") or {}).get("datasetName"), "isaac")
+        files = captured.get("files") or []
+        self.assertTrue(files, "expected multipart file upload for data")
+        field, filename, content, content_type = files[0]
+        self.assertEqual(field, "data")
+        self.assertTrue(str(filename).endswith(".txt"))
+        self.assertIn("Datenschutz", content.decode("utf-8"))
+        self.assertEqual(content_type, "text/plain")
+
+    def test_cloud_search_includes_datasets(self):
+        from external_memory.config import ExternalMemoryConfig
+        from external_memory.cognee_adapter import CogneeAdapter
+
+        cfg = ExternalMemoryConfig(
+            cognee_enabled=True,
+            cognee_allow_cloud=True,
+            cognee_base_url="https://tenant.example.aws.cognee.ai",
+            cognee_api_key="test-key",
+            search_timeout_s=2.0,
+        )
+        adapter = CogneeAdapter(cfg)
+        adapter._tried = True
+        adapter._mode = "cloud"
+        adapter._init_error = ""
+
+        captured = {}
+
+        def capture(method, path, body=None, timeout=None):
+            captured["method"] = method
+            captured["path"] = path
+            captured["body"] = body
+            return {"results": [{"text": "hit about privacy"}]}
+
+        adapter._cloud_request = capture  # type: ignore[method-assign]
+        hits = adapter.search("privacy local", limit=3)
+        self.assertEqual(captured.get("method"), "POST")
+        self.assertEqual(captured.get("path"), "/api/v1/search")
+        body = captured.get("body") or {}
+        self.assertEqual(body.get("datasets"), ["isaac"])
+        self.assertEqual(body.get("search_type"), "CHUNKS")
+        self.assertEqual(body.get("query"), "privacy local")
+        self.assertEqual(len(hits), 1)
+        self.assertIn("privacy", hits[0]["text"])
 
     def test_cloud_status_reports_mode(self):
         from external_memory.config import ExternalMemoryConfig

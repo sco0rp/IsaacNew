@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 from urllib.parse import urljoin
+from uuid import uuid4
 
 from external_memory.async_util import run_coro
 from external_memory.config import ExternalMemoryConfig
@@ -155,8 +156,70 @@ class CogneeAdapter:
             method=method.upper(),
         )
         to = timeout if timeout is not None else self._cfg.search_timeout_s
+        return self._cloud_execute(req, path, timeout=to)
+
+    def _cloud_request_multipart(
+        self,
+        method: str,
+        path: str,
+        *,
+        fields: dict[str, str] | None = None,
+        files: list[tuple[str, str, bytes, str]] | None = None,
+        timeout: float | None = None,
+    ) -> Any:
+        """POST multipart/form-data (Cognee Cloud /api/v1/add expects UploadFile).
+
+        files entries: (field_name, filename, content_bytes, content_type)
+        """
+        base = self._cfg.cognee_base_url.rstrip("/") + "/"
+        url = urljoin(base, path.lstrip("/"))
+        boundary = f"----IsaacBoundary{uuid4().hex}"
+        parts: list[bytes] = []
+        for name, value in (fields or {}).items():
+            parts.append(
+                (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+                    f"{value}\r\n"
+                ).encode("utf-8")
+            )
+        for field, filename, content, content_type in files or []:
+            parts.append(
+                (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="{field}"; '
+                    f'filename="{filename}"\r\n'
+                    f"Content-Type: {content_type}\r\n\r\n"
+                ).encode("utf-8")
+                + content
+                + b"\r\n"
+            )
+        parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+        data = b"".join(parts)
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        }
+        if self._cfg.cognee_api_key:
+            headers["X-Api-Key"] = self._cfg.cognee_api_key
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers=headers,
+            method=method.upper(),
+        )
+        to = timeout if timeout is not None else self._cfg.write_timeout_s
+        return self._cloud_execute(req, path, timeout=to)
+
+    def _cloud_execute(
+        self,
+        req: urllib.request.Request,
+        path: str,
+        *,
+        timeout: float,
+    ) -> Any:
         try:
-            with urllib.request.urlopen(req, timeout=to) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
                 if not raw.strip():
                     return None
@@ -195,6 +258,7 @@ class CogneeAdapter:
                 "query": query,
                 "search_type": "CHUNKS",
                 "top_k": max(1, min(limit, 20)),
+                "datasets": [self.DATASET_NAME],
             }
             results = self._cloud_request(
                 "POST",
@@ -288,11 +352,14 @@ class CogneeAdapter:
 
     def _remember_cloud(self, text: str) -> bool:
         try:
-            # Minimal cloud ingest: add text; cognify can be heavy — add first
-            self._cloud_request(
+            # Cognee Cloud /api/v1/add expects multipart (UploadFile + datasetName), not JSON.
+            self._cloud_request_multipart(
                 "POST",
                 "/api/v1/add",
-                body={"data": text, "datasetName": self.DATASET_NAME},
+                fields={"datasetName": self.DATASET_NAME},
+                files=[
+                    ("data", "memory.txt", text.encode("utf-8"), "text/plain"),
+                ],
                 timeout=self._cfg.write_timeout_s,
             )
             return True

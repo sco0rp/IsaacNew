@@ -1638,8 +1638,45 @@ class IsaacKernel:
     async def _handle_browser_request(self, text: str) -> str:
         from browser import get_browser
 
+        # OpenRouter/Provider-Key-Anfragen: auf Free-Cloud Env-Key nutzen, nicht Verfassung/Browser
+        if self._is_provider_provision_request(text):
+            provider_id = self._resolve_provider_provision_target(text) or "all"
+            if provider_id in {"", "auto", "alle", "all"}:
+                result = await get_browser().auto_provision_providers(provision_all=True)
+            else:
+                result = await get_browser().provision_provider_token(provider_id)
+            if result.get("results"):
+                lines = [
+                    f"- {item.get('provider_id')}: "
+                    f"{'verbunden (' + str(item.get('token_preview', 'ok')) + ')' if item.get('ok') else item.get('error', 'fehlgeschlagen')}"
+                    for item in result.get("results", [])
+                ]
+                summary = (
+                    f"[Browser] Provider-Provisioning: {result.get('provisioned', 0)} verbunden, "
+                    f"{result.get('failed', 0)} fehlgeschlagen.\n"
+                )
+                return summary + "\n".join(lines)
+            if result.get("ok"):
+                src = result.get("source") or "browser"
+                return (
+                    f"[Provider] {result.get('provider_id', provider_id)}-Key verbunden "
+                    f"(Quelle: {src}).\n"
+                    f"Ref: {result.get('secret_ref')}\n"
+                    f"Preview: {result.get('token_preview')}\n"
+                    f"{result.get('message') or ''}"
+                ).strip()
+            return (
+                f"[Provider] Provisioning fehlgeschlagen: {result.get('error', 'unbekannt')}\n"
+                f"Tipp Free-Cloud: Key in Render → Environment setzen "
+                f"(OPENROUTER_API_KEY / GROQ_API_KEY / GOOGLE_API_KEY), dann Service neu starten."
+            )
+
         if not self.cfg.browser_automation:
-            return "[Browser] Browser-Automation ist im Runtime-Setting deaktiviert."
+            return (
+                "[Browser] Browser-Automation ist deaktiviert "
+                "(Free-Cloud / Runtime-Setting). "
+                "API-Keys bitte als Environment-Variablen setzen, nicht per Browser-Login."
+            )
 
         simple = self._parse_simple_browser_request(text)
         if simple:
@@ -1667,34 +1704,6 @@ class IsaacKernel:
                 f"[Browser] Navigation fehlgeschlagen: {result.get('error', 'unbekannt')}\n"
                 f"URL: {result.get('current_url', simple['url'])}"
             )
-
-        if self._is_provider_provision_request(text):
-            provider_id = self._resolve_provider_provision_target(text) or "all"
-            if provider_id in {"", "auto", "alle", "all"}:
-                result = await get_browser().auto_provision_providers(
-                    provision_all=True,
-                )
-            else:
-                result = await get_browser().provision_provider_token(provider_id)
-            if result.get("results"):
-                lines = [
-                    f"- {item.get('provider_id')}: "
-                    f"{'verbunden (' + str(item.get('token_preview', 'ok')) + ')' if item.get('ok') else item.get('error', 'fehlgeschlagen')}"
-                    for item in result.get("results", [])
-                ]
-                summary = (
-                    f"[Browser] Provider-Provisioning: {result.get('provisioned', 0)} verbunden, "
-                    f"{result.get('failed', 0)} fehlgeschlagen.\n"
-                )
-                return summary + "\n".join(lines)
-            if result.get("ok"):
-                return (
-                    f"[Browser] {result.get('provider_id', provider_id)}-Token erzeugt und verbunden.\n"
-                    f"Ref: {result.get('secret_ref')}\n"
-                    f"Preview: {result.get('token_preview')}\n"
-                    f"URL: {result.get('current_url')}"
-                )
-            return f"[Browser] Provider-Provisioning fehlgeschlagen: {result.get('error', 'unbekannt')}"
 
         try:
             spec = self._parse_browser_request(text)

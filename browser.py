@@ -28,6 +28,7 @@ import asyncio
 import json
 import time
 import logging
+import os
 import re
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -828,6 +829,44 @@ class BrowserManager:
         spec = PROVIDER_PROVISION_SPECS.get(pid)
         if not spec:
             return {"ok": False, "error": f"Kein Browser-Provisioning für Provider '{provider_id}'"}
+
+        # Free-Cloud / Browser aus: kein Playwright, keine stillen Privilege-Escalations
+        try:
+            from free_cloud import free_cloud_enabled
+            free = free_cloud_enabled()
+        except Exception:
+            free = False
+        if free or not self.cfg.browser_automation:
+            env_key = (spec.get("secret_ref") or "").strip() or f"{pid.upper()}_API_KEY"
+            existing = (os.getenv(env_key) or "").strip()
+            if not existing and pid == "openrouter":
+                existing = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+            if not existing and pid == "groq":
+                existing = (os.getenv("GROQ_API_KEY") or "").strip()
+            if not existing and pid in {"gemini", "google"}:
+                existing = (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
+            if existing:
+                ref = (secret_ref or env_key).strip() or env_key
+                self._connect_provisioned_token(ref, pid, existing)
+                return {
+                    "ok": True,
+                    "provider_id": pid,
+                    "secret_ref": ref,
+                    "token_preview": existing[:6] + "..." + existing[-4:],
+                    "source": "env",
+                    "message": f"{pid}-Key aus Environment verbunden (kein Browser nötig).",
+                }
+            return {
+                "ok": False,
+                "error": (
+                    f"Browser-Token für '{pid}' auf Free-Cloud/ohne Browser deaktiviert "
+                    f"(Verfassung: no_silent_privilege_escalation). "
+                    f"Setze den Key als Env-Var {env_key} (Render Dashboard → Environment) "
+                    f"oder lokal in .env — dann neu deployen/neustarten."
+                ),
+                "source": "free_cloud_policy",
+                "provider_id": pid,
+            }
 
         constitution_block = self._constitution_gate_browser(
             "browser_provision",

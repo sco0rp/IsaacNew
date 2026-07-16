@@ -13,7 +13,7 @@
 
 1. https://dashboard.render.com → **New +** → **Blueprint**
 2. GitHub verbinden, Repo wählen: **sco0rp/IsaacNew**
-3. Branch: **`feature/google-aistudio-gemini-stack`** (oder `main` nach Merge)
+3. Branch: **`main`** (oder `main` nach Merge)
 4. Blueprint-Datei: **`render.yaml`** (Repo-Root)
 5. **Apply** / Create
 6. Service **isaac-free** öffnen → **Environment**

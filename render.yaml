@@ -9,7 +9,7 @@ services:
     name: isaac-free
     runtime: docker
     plan: free
-    branch: feature/google-aistudio-gemini-stack
+    branch: main
     dockerfilePath: ./Dockerfile.free
     dockerContext: .
     healthCheckPath: /healthz

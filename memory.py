@@ -683,6 +683,23 @@ class Memory:
         if query and vector and vector.aktiv:
             semantic_context = vector.als_kontext(query) or ""
 
+        # Optional external memory (Mem0/Cognee/Letta) — fail-soft, default off
+        external_hits: list[dict] = []
+        try:
+            from external_memory import get_external_memory_bridge
+
+            ext = get_external_memory_bridge()
+            if ext.any_enabled() and user_input:
+                external_hits = ext.search_all(user_input, limit=4)
+                ext_block = ext.format_hits(external_hits)
+                if ext_block:
+                    if semantic_context:
+                        semantic_context = f"{semantic_context}\n{ext_block}"
+                    else:
+                        semantic_context = ext_block
+        except Exception:
+            external_hits = []
+
         active_directives = []
         preferences = []
         for directive in directives:
@@ -721,6 +738,17 @@ class Memory:
                     "value": normalized["value"],
                     "confidence": normalized["confidence"],
                 })
+
+        if external_hits:
+            try:
+                from external_memory import get_external_memory_bridge
+
+                for pref in get_external_memory_bridge().hits_as_preferences(
+                    external_hits
+                ):
+                    preferences.append(pref)
+            except Exception:
+                pass
 
         conversation_history = []
         project_context = []
@@ -809,7 +837,11 @@ class Memory:
             for fact in data["relevant_facts"]:
                 sections.append(f"  - {fact.get('key', '')}: {fact.get('value', '')}")
         if data.get("semantic_context"):
-            sections.append("[semantic_context]")
+            # May already contain an [external_memory] block from adapters
+            if "[external_memory]" in (data["semantic_context"] or ""):
+                sections.append("[semantic_context+external]")
+            else:
+                sections.append("[semantic_context]")
             sections.append(data["semantic_context"])
         if data.get("conversation_history"):
             sections.append("[conversation_history]")
@@ -827,6 +859,10 @@ class Memory:
                 if item.get("source") == "directive":
                     sections.append(
                         f"  - directive(prio={item.get('priority', 0)}): {item.get('text', '')}"
+                    )
+                elif item.get("source") == "mem0":
+                    sections.append(
+                        f"  - mem0: {item.get('text') or item.get('value', '')}"
                     )
                 else:
                     sections.append(f"  - fact {item.get('key', '')}: {item.get('value', '')}")

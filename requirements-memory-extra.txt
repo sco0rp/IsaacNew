@@ -1,0 +1,13 @@
+# Optional external memory backends for Isaac (NOT required for CI/core).
+# Install: bash scripts/install_external_memory.sh
+# Or: .venv/bin/pip install -r requirements-memory-extra.txt
+
+# Mem0 OSS — preference/fact memory layer
+mem0ai>=0.1.0
+
+# Cognee — knowledge-graph memory (remember/recall)
+cognee>=1.0.0
+
+# Optional extras (uncomment if using local Ollama heavily):
+# cognee[ollama]
+# chromadb>=0.4.0

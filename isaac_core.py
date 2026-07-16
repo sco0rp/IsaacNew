@@ -97,6 +97,8 @@ class Intent:
     SUDO_CLOSE  = "sudo_close"
     LOGIN_ADD   = "login_add"
     URL_ADD     = "url_add"
+    LETTA       = "letta"           # Explizit: Letta Code Companion-CLI
+    EXT_MEMORY  = "ext_memory"      # Status: external memory adapters
 
 
 EXPLICIT_COMMAND_PATTERNS = [
@@ -160,6 +162,19 @@ EXPLICIT_COMMAND_PATTERNS = [
     (Intent.PAUSE,      [r"^pause$", r"^stopp$"]),
     (Intent.RESUME,     [r"^weiter$", r"^fortsetzen$"]),
     (Intent.CANCEL,     [r"^abbrechen\s+\w+"]),
+    (Intent.LETTA,      [
+        r"^letta\s*:",
+        r"^coding-agent\s*:",
+        r"^coding agent\s*:",
+    ]),
+    (Intent.EXT_MEMORY, [
+        r"^external memory$",
+        r"^external[- ]memory$",
+        r"^memory adapters?$",
+        r"^mem0 status$",
+        r"^cognee status$",
+        r"^letta status$",
+    ]),
 ]
 
 def detect_intent(text: str) -> str:
@@ -397,6 +412,8 @@ class IsaacKernel:
             Intent.CANCEL:     self._handle_cancel,
             Intent.LOGIN_ADD:  self._handle_login_add,
             Intent.URL_ADD:    self._handle_url_add,
+            Intent.EXT_MEMORY: self._handle_ext_memory_status,
+            Intent.LETTA:      self._handle_letta,
         }
         if intent in direkt:
             result = direkt[intent](user_input)
@@ -867,6 +884,18 @@ class IsaacKernel:
             score=score, iterations=task.iteration + 1,
             provider=task.provider_used,
         )
+        # Optional external memory write (Mem0/Cognee) — opt-in, score-gated
+        try:
+            from external_memory import get_external_memory_bridge
+
+            get_external_memory_bridge().remember_turn(
+                user_input,
+                antwort[:600],
+                score=score,
+                metadata={"task_id": task.id, "provider": task.provider_used},
+            )
+        except Exception as exc:
+            log.debug("external memory remember_turn skipped: %s", exc)
         final_trace = self.neural.propagate(
             interaction_class=interaction_class,
             intent=intent,
@@ -1783,7 +1812,88 @@ class IsaacKernel:
                 f"✓{p['erfolge']} ✗{p['fehler']} "
                 f"{'[BLACKLIST]' if p['blacklisted'] else ''}"
             )
+        try:
+            from external_memory import get_external_memory_bridge
+
+            lines.append("")
+            lines.append(get_external_memory_bridge().status_text())
+        except Exception:
+            pass
         return "\n".join(lines)
+
+    def _handle_ext_memory_status(self, *_) -> str:
+        try:
+            from external_memory import get_external_memory_bridge
+
+            return get_external_memory_bridge().status_text()
+        except Exception as exc:
+            return f"[External Memory] nicht verfügbar: {exc}"
+
+    def _handle_letta(self, text: str) -> str:
+        """Explicit Letta Code companion run: 'letta: …' / 'coding-agent: …'."""
+        prompt = text
+        for prefix in ("letta:", "coding-agent:", "coding agent:"):
+            low = text.lower()
+            idx = low.find(prefix)
+            if idx >= 0:
+                prompt = text[idx + len(prefix) :].strip()
+                break
+        if not prompt:
+            return (
+                "[Letta] Format: letta: AUFGABE\n"
+                "Install: npm i -g @letta-ai/letta-code\n"
+                "Flag: ISAAC_LETTA_ENABLED=1"
+            )
+        try:
+            from external_memory import get_external_memory_bridge
+            from privilege import steffen_ctx
+
+            bridge = get_external_memory_bridge()
+            if not bridge.cfg.letta_enabled:
+                return (
+                    "[Letta] Deaktiviert. Setze ISAAC_LETTA_ENABLED=1 und installiere "
+                    "@letta-ai/letta-code."
+                )
+            # Constitution / privilege gate for shell-like companion
+            try:
+                from constitution import get_constitution
+
+                decision = get_constitution().validate_action(
+                    "system_command",
+                    {
+                        "command": "letta",
+                        "prompt": prompt[:200],
+                        "owner_approved": True,
+                        "risk": "normal",
+                        "audit_logged": True,
+                    },
+                )
+                if not decision.get("allowed", True):
+                    blocked = ", ".join(decision.get("blocked_by") or []) or "policy"
+                    return f"[Letta] Verfassung blockiert: {blocked}"
+            except Exception:
+                pass
+            try:
+                ok, reason = self.gate.authorize(
+                    "system_command",
+                    steffen_ctx("Letta Code companion"),
+                )
+                if not ok:
+                    return f"[Letta] Privilege verweigert: {reason}"
+            except Exception:
+                pass
+
+            result = bridge.letta.run(prompt, timeout=180.0)
+            if result.get("ok"):
+                body = (result.get("text") or "").strip() or "(keine Ausgabe)"
+                return f"[Letta]\n{body[:4000]}"
+            err = result.get("error") or "unbekannt"
+            body = (result.get("text") or "").strip()
+            if body:
+                return f"[Letta] Fehler: {err}\n{body[:2000]}"
+            return f"[Letta] Fehler: {err}"
+        except Exception as exc:
+            return f"[Letta] Fehler: {exc}"
 
     def _handle_pause(self, *_) -> str:
         self.gate.pause(steffen_ctx("Pause"))

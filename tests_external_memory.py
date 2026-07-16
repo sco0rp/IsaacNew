@@ -392,5 +392,31 @@ class TestBridgeStatusText(unittest.TestCase):
         self.assertIn("mode=cloud", text)
 
 
+@unittest.skipUnless(os.getenv("COGNEE_SMOKE") == "1", "set COGNEE_SMOKE=1 for live cloud")
+class TestCogneeCloudLiveSmoke(unittest.TestCase):
+    def test_live_status_and_search(self):
+        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        if os.path.isfile(env_path):
+            for line in open(env_path, encoding="utf-8"):
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+        from external_memory import get_external_memory_bridge, reset_external_memory_bridge
+
+        reset_external_memory_bridge()
+        bridge = get_external_memory_bridge(reset=True)
+        st = bridge.cognee.status()
+        self.assertTrue(st.get("available"), msg=st)
+        self.assertEqual(st.get("mode"), "cloud")
+        hits = bridge.cognee.search("Isaac privacy", limit=2)
+        self.assertIsInstance(hits, list)
+        if hits:
+            self.assertEqual(hits[0].get("source"), "cognee")
+            self.assertTrue(hits[0].get("text"))
+
+
 if __name__ == "__main__":
     unittest.main()

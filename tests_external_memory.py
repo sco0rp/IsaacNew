@@ -333,5 +333,22 @@ class TestCogneeCloudAdapter(unittest.TestCase):
         self.assertIn("tenant.example", st["cloud_url"] or "")
 
 
+class TestBridgeStatusText(unittest.TestCase):
+    def test_status_text_includes_cognee_mode_when_cloud(self):
+        from external_memory.config import ExternalMemoryConfig
+        from external_memory.bridge import ExternalMemoryBridge
+
+        cfg = ExternalMemoryConfig(
+            cognee_enabled=True,
+            cognee_allow_cloud=True,
+            cognee_base_url="https://tenant.example.aws.cognee.ai",
+            cognee_api_key="k",
+        )
+        bridge = ExternalMemoryBridge(cfg)
+        text = bridge.status_text()
+        self.assertIn("cognee", text)
+        self.assertIn("mode=cloud", text)
+
+
 if __name__ == "__main__":
     unittest.main()

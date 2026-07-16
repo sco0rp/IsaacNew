@@ -178,14 +178,15 @@ class ExternalMemoryBridge:
             f"write={st['write_enabled']} min_score={st['min_score']}"
         ]
         for name, info in st["adapters"].items():
+            extra = ""
+            if info.get("init_error") and not info.get("available"):
+                extra += f" err={info.get('init_error')}"
+            mode = info.get("mode")
+            if mode and mode not in ("off", "pending", ""):
+                extra += f" mode={mode}"
             lines.append(
                 f"  {name}: enabled={info.get('enabled')} "
-                f"available={info.get('available')}"
-                + (
-                    f" err={info.get('init_error')}"
-                    if info.get("init_error") and not info.get("available")
-                    else ""
-                )
+                f"available={info.get('available')}{extra}"
             )
         return "\n".join(lines)
 

@@ -18,7 +18,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Any
 from contextlib import contextmanager
 
@@ -46,6 +46,8 @@ class RetrievalContext:
     relevant_reflections: list[str]
     open_questions: list[str]
     relevant_procedures: list[dict]
+    # Goal-Autonomie Slice 1b: Owner-Ziele vor Strategy (fail-soft, default [])
+    active_owner_goals: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -61,6 +63,7 @@ class RetrievalContext:
             "relevant_reflections": self.relevant_reflections,
             "open_questions": self.open_questions,
             "relevant_procedures": self.relevant_procedures,
+            "active_owner_goals": list(self.active_owner_goals or []),
         }
 
 
@@ -804,6 +807,8 @@ class Memory:
                     "risks": ["degraded_procedure"],
                 })
 
+        active_owner_goals = self._active_owner_goals_for_retrieval(limit=6)
+
         return RetrievalContext(
             query=query,
             active_directives=active_directives,
@@ -817,7 +822,34 @@ class Memory:
             relevant_reflections=relevant_reflections[:2],
             open_questions=open_questions[:3],
             relevant_procedures=relevant_procedures[:3],
+            active_owner_goals=active_owner_goals,
         )
+
+    def _active_owner_goals_for_retrieval(self, *, limit: int = 6) -> list[dict]:
+        """Aktive Owner-Ziele für Retrieval (vor Strategy). Fail-soft.
+
+        Bindet goal-directed Autonomie in den kanonischen Retrieval-Pfad ein
+        (AGENTS.md Goal-Phase / Checklist Slice 1b). Kein Tool-Routing hier.
+        """
+        try:
+            from goal_store import get_goal_store
+
+            gs = get_goal_store()
+            rows: list[dict] = []
+            for g in gs.list_goals(status="active")[: max(0, int(limit))]:
+                subs = gs.list_subgoals(g.id, status="active")
+                rows.append({
+                    "id": g.id,
+                    "title": (g.title or "")[:120],
+                    "priority": float(g.priority or 0.0),
+                    "status": g.status,
+                    "subgoal_count": len(subs),
+                    "top_subgoal": (subs[0].title[:100] if subs else ""),
+                })
+            return rows
+        except Exception as exc:
+            log.debug("active_owner_goals retrieval skipped: %s", exc)
+            return []
 
     def format_retrieval_context(self, retrieval_ctx: RetrievalContext | dict[str, Any]) -> str:
         if isinstance(retrieval_ctx, RetrievalContext):
@@ -831,6 +863,15 @@ class Memory:
             for directive in data["active_directives"]:
                 sections.append(
                     f"  - prio={directive.get('priority', 0)}: {directive.get('text', '')}"
+                )
+        if data.get("active_owner_goals"):
+            sections.append("[active_owner_goals]")
+            for goal in data["active_owner_goals"]:
+                sub = (goal.get("top_subgoal") or "").strip()
+                sub_note = f" → {sub}" if sub else ""
+                sections.append(
+                    f"  - id={goal.get('id', '')} p={float(goal.get('priority') or 0):.2f} "
+                    f"{goal.get('title', '')}{sub_note}"
                 )
         if data.get("relevant_facts"):
             sections.append("[relevant_facts]")

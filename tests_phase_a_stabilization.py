@@ -3267,6 +3267,28 @@ class TestPhase4Connect(unittest.TestCase):
         self.assertEqual(parse_goal_command("ziele")["op"], "list")
         self.assertIsNone(parse_goal_command("Was ist 2+2?"))
 
+    def test_build_retrieval_context_includes_active_owner_goals(self):
+        """Slice 1b: active Owner-Ziele im kanonischen Retrieval-Pfad (vor Strategy)."""
+        import tempfile
+        from goal_store import reset_goal_store_for_tests
+        from memory import get_memory
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = reset_goal_store_for_tests(Path(tmp) / "goals_ret.json")
+            g = store.add_owner_goal("Steffen-Ziel Retrieval-Test", priority=0.85)
+            store.add_subgoal(g.id, "Ersten Schritt planen", origin="planner")
+            mem = get_memory()
+            ctx = mem.build_retrieval_context("Wie geht es mit meinen Zielen weiter?")
+            data = ctx.as_dict() if hasattr(ctx, "as_dict") else dict(ctx)
+            goals = data.get("active_owner_goals") or []
+            self.assertTrue(goals, msg="active_owner_goals muss gesetzt sein")
+            self.assertTrue(any(x.get("id") == g.id for x in goals))
+            self.assertTrue(any("Retrieval-Test" in (x.get("title") or "") for x in goals))
+            formatted = mem.format_retrieval_context(ctx)
+            self.assertIn("[active_owner_goals]", formatted)
+            self.assertIn(g.id, formatted)
+            self.assertIn("Retrieval-Test", formatted)
+
     def test_goal_intent_routing_and_handler(self):
         import tempfile
         from goal_store import reset_goal_store_for_tests
@@ -3614,16 +3636,19 @@ class TestPhase4Connect(unittest.TestCase):
             inq = reset_inquiry_store_for_tests(Path(tmp) / "i.json")
             goal = store.add_owner_goal("Kernel Stabilität verbessern", priority=0.9)
             sg = store.add_subgoal(goal.id, "Infos sammeln", origin="planner")
-            # first attempt → plan
+            # first attempt → plan, no tools
             self.assertEqual(choose_work_mode(goal, sg)[2], "plan")
+            self.assertFalse(choose_work_mode(goal, sg)[1])
             sg.attempts = 1
             mode = choose_work_mode(goal, sg)
-            self.assertEqual(mode[2], "research")
-            self.assertTrue(mode[1])  # allow_tools
-            # Research-Marker im Titel erzwingt research auch bei attempts=0
+            # Non-research goals: no tool unlock via attempt rotation (S2)
+            self.assertEqual(mode[2], "work")
+            self.assertFalse(mode[1])
+            # Research-Marker im Titel erzwingt research + tools auch bei attempts=0
             g2 = store.add_owner_goal("Recherchiere Markt für Isaac-Device", priority=0.8)
             s2 = store.add_subgoal(g2.id, "Start", origin="planner")
             self.assertEqual(choose_work_mode(g2, s2)[2], "research")
+            self.assertTrue(choose_work_mode(g2, s2)[1])
             prompt = build_goal_prompt(goal, sg, mode="research")
             self.assertIn(goal.id, prompt)
             self.assertIn("Owner-Ziel-ID", prompt)

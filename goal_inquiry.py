@@ -180,24 +180,30 @@ def choose_work_mode(
     goal: OwnerGoal,
     subgoal: IsaacSubgoal,
 ) -> tuple[str, bool, str]:
-    """task_type, allow_tools, mode_tag (plan|research|inquiry|work)."""
+    """task_type, allow_tools, mode_tag (plan|research|inquiry|work).
+
+    allow_tools=True nur bei Research-Zielen (Marker / force_research) —
+    nicht pauschal durch Attempt-Rotation (AGENTS Goal-Autonomie / Checklist S2).
+    """
     meta = goal.metadata or {}
     if meta.get("force_research"):
         return "research", True, "research"
     if meta.get("force_inquiry"):
         return "chat", False, "inquiry"
     text = f"{goal.title} {goal.description} {subgoal.title}".lower()
-    if any(m in text for m in _RESEARCH_MARKERS):
+    is_research_goal = any(m in text for m in _RESEARCH_MARKERS)
+    if is_research_goal:
         return "research", True, "research"
     if any(m in text for m in _INQUIRY_MARKERS):
         return "chat", False, "inquiry"
     attempts = int(subgoal.attempts or 0)
     if attempts == 0:
         return "chat", False, "plan"
-    # Alternierend: Research → Inquiry → Work (kein Ambitions-Stop)
+    # Alternierend ohne Tool-Autonomie: Work → Inquiry → Work
+    # Research+Tools nur wenn Ziel/Subgoal research-markiert (oben).
     phase = attempts % 3
     if phase == 1:
-        return "research", True, "research"
+        return "chat", False, "work"
     if phase == 2:
         return "chat", False, "inquiry"
     return "chat", False, "work"

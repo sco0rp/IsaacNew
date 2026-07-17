@@ -37,4 +37,10 @@ S3 INQUIRY / RESEARCH / LEARN (an goal_id)
 [x] Research/Inquiry-Prompts mit Owner-Ziel-ID
 [x] record_goal_learning_from_task → facts source=goal:{id}
 [x] Failure → recovery subgoal
-[ ] Digest-Kanal gebündelt (Slice 4)
+[x] Digest-Kanal gebündelt (Slice 4) — ziele digest / rate-limited background emit — 2026-07-17
+
+──────────────────────────────────────────────────────────────────────────────
+STATUS 2026-07-17
+──────────────────────────────────────────────────────────────────────────────
+S0–S4 Kernpfade implementiert und regression-getestet.
+Offen nur: Feinschliff (z. B. Owner-Antwort-Parser auf Digest-Fragen), keine Blocker.

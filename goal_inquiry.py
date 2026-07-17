@@ -22,6 +22,7 @@ from goal_store import GoalStore, IsaacSubgoal, OwnerGoal, get_goal_store
 log = logging.getLogger("Isaac.GoalInquiry")
 
 INQUIRY_PATH = DATA_DIR / "goal_inquiries.json"
+DIGEST_STATE_PATH = DATA_DIR / "goal_digest_state.json"
 
 _RESEARCH_MARKERS = (
     "recherch", "research", "untersuche", "finde heraus", "suche information",
@@ -398,3 +399,200 @@ def record_goal_learning_from_task(task: Any) -> dict[str, Any]:
         f"goal={goal_id} facts={result.get('facts')} inq={result.get('inquiries')} status={status}",
     )
     return result
+
+
+# ── Slice 4: gebündelter Digest-Kanal (Owner, goal-bound) ─────────────────────
+
+def digest_min_interval_sec() -> int:
+    """Mindestabstand Background-Digest (Default 1h). 0 = immer erlaubt."""
+    import os
+
+    raw = (os.getenv("GOAL_DIGEST_INTERVAL") or "3600").strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 3600
+
+
+def _load_digest_state(path: Path = DIGEST_STATE_PATH) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_digest_state(state: dict[str, Any], path: Path = DIGEST_STATE_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def build_goal_digest(
+    *,
+    goal_store: Optional[GoalStore] = None,
+    inquiry_store: Optional[GoalInquiryStore] = None,
+    limit_goals: int = 8,
+    limit_inquiries: int = 12,
+    include_facts: bool = True,
+) -> dict[str, Any]:
+    """Gebündelter Owner-Digest: aktive Ziele + offene Fragen + goal_latest Facts.
+
+    Kein Tool-Routing. Alles an goal_id gebunden (oder leerer Digest).
+    """
+    gs = goal_store or get_goal_store()
+    inq = inquiry_store or get_inquiry_store()
+    active = gs.list_goals(status="active")[: max(0, int(limit_goals))]
+    open_inq = inq.list_open()[: max(0, int(limit_inquiries))]
+
+    goal_blocks: list[dict[str, Any]] = []
+    fact_lines: list[str] = []
+    mem = None
+    if include_facts:
+        try:
+            from memory import get_memory
+
+            mem = get_memory()
+        except Exception:
+            mem = None
+
+    for g in active:
+        subs = gs.list_subgoals(g.id, status="active")
+        g_inq = [i for i in open_inq if i.goal_id == g.id]
+        latest = ""
+        if mem is not None:
+            try:
+                rec = mem.get_fact_record(f"goal_latest.{g.id}")
+                if rec and (rec.get("value") or "").strip():
+                    latest = str(rec.get("value") or "").strip()[:220]
+                    fact_lines.append(f"{g.id}:{latest[:80]}")
+            except Exception:
+                pass
+        goal_blocks.append({
+            "id": g.id,
+            "title": g.title,
+            "priority": g.priority,
+            "subgoals": [s.title for s in subs[:5]],
+            "open_inquiries": [
+                {"id": i.id, "question": i.question} for i in g_inq[:5]
+            ],
+            "latest_progress": latest,
+        })
+
+    orphan_inq = [
+        {"id": i.id, "goal_id": i.goal_id, "question": i.question}
+        for i in open_inq
+        if i.goal_id not in {g.id for g in active}
+    ][:5]
+
+    fingerprint = "|".join(
+        [
+            f"g={len(active)}",
+            f"q={len(open_inq)}",
+            ",".join(g.id for g in active),
+            ",".join(i.id for i in open_inq[:8]),
+            ",".join(fact_lines[:6]),
+        ]
+    )
+
+    return {
+        "ok": True,
+        "generated_at": _now(),
+        "active_goal_count": len(active),
+        "open_inquiry_count": len(open_inq),
+        "goals": goal_blocks,
+        "orphan_inquiries": orphan_inq,
+        "fingerprint": fingerprint,
+        "empty": len(active) == 0 and len(open_inq) == 0,
+    }
+
+
+def format_goal_digest(digest: Optional[dict[str, Any]] = None, **kwargs: Any) -> str:
+    """Menschenlesbarer Digest-Text für Status / Chat / Background-Note."""
+    data = digest if isinstance(digest, dict) else build_goal_digest(**kwargs)
+    if data.get("empty"):
+        return (
+            "[Goal-Digest] Keine aktiven Owner-Ziele und keine offenen Goal-Fragen.\n"
+            "Neues Ziel: Ziel: <text> │ Liste: ziele │ Digest: ziele digest"
+        )
+    lines = [
+        "[Goal-Digest] Gebündelt (goal-bound)",
+        f"Aktiv: {data.get('active_goal_count', 0)} Ziele │ "
+        f"Offene Fragen: {data.get('open_inquiry_count', 0)}",
+        "",
+    ]
+    for g in data.get("goals") or []:
+        lines.append(f"· {g.get('title', '')}  [id={g.get('id', '')} p={float(g.get('priority') or 0):.2f}]")
+        for sg in g.get("subgoals") or []:
+            lines.append(f"    – sub: {sg}")
+        for iq in g.get("open_inquiries") or []:
+            lines.append(f"    ? {iq.get('question', '')[:100]}")
+        prog = (g.get("latest_progress") or "").strip()
+        if prog:
+            lines.append(f"    progress: {prog[:160]}")
+        lines.append("")
+    orphans = data.get("orphan_inquiries") or []
+    if orphans:
+        lines.append("Fragen ohne aktives Ziel:")
+        for iq in orphans:
+            lines.append(f"  ? [{str(iq.get('goal_id', ''))[-8:]}] {iq.get('question', '')[:90]}")
+    return "\n".join(lines).rstrip()
+
+
+def maybe_emit_goal_digest(
+    *,
+    on_note: Optional[Any] = None,
+    force: bool = False,
+    state_path: Path = DIGEST_STATE_PATH,
+    goal_store: Optional[GoalStore] = None,
+    inquiry_store: Optional[GoalInquiryStore] = None,
+) -> dict[str, Any]:
+    """Rate-limited Digest für Background. force=True überspringt Intervall/Fingerprint.
+
+    Returns: {ok, emitted, reason, digest?}
+    """
+    digest = build_goal_digest(goal_store=goal_store, inquiry_store=inquiry_store)
+    if digest.get("empty") and not force:
+        return {"ok": True, "emitted": False, "reason": "empty"}
+
+    state = _load_digest_state(state_path)
+    now = time.time()
+    interval = digest_min_interval_sec()
+    last_ts = float(state.get("last_emit_ts") or 0)
+    last_fp = str(state.get("last_fingerprint") or "")
+    fp = str(digest.get("fingerprint") or "")
+
+    if not force:
+        if interval > 0 and (now - last_ts) < interval and fp == last_fp:
+            return {"ok": True, "emitted": False, "reason": "rate_limited_same"}
+        if interval > 0 and (now - last_ts) < interval and not fp:
+            return {"ok": True, "emitted": False, "reason": "rate_limited"}
+        # Gleiches Fingerprint und kürzlich gesendet → skip
+        if fp and fp == last_fp and interval > 0 and (now - last_ts) < interval:
+            return {"ok": True, "emitted": False, "reason": "unchanged"}
+
+    text = format_goal_digest(digest)
+    if on_note:
+        try:
+            on_note(text)
+        except Exception as exc:
+            log.debug("digest on_note: %s", exc)
+    state.update({
+        "last_emit_ts": now,
+        "last_emit_at": _now(),
+        "last_fingerprint": fp,
+        "last_open_inquiries": int(digest.get("open_inquiry_count") or 0),
+        "last_active_goals": int(digest.get("active_goal_count") or 0),
+    })
+    _save_digest_state(state, state_path)
+    AuditLog.action(
+        "GoalDigest",
+        "emit",
+        f"goals={digest.get('active_goal_count')} inq={digest.get('open_inquiry_count')} force={force}",
+    )
+    return {"ok": True, "emitted": True, "reason": "emitted", "digest": digest, "text": text}

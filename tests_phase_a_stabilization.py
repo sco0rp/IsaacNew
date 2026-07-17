@@ -3289,6 +3289,74 @@ class TestPhase4Connect(unittest.TestCase):
             self.assertIn(g.id, formatted)
             self.assertIn("Retrieval-Test", formatted)
 
+    def test_goal_digest_channel_bundles_inquiries_and_rate_limits(self):
+        """Slice 4: gebündelter Digest-Kanal + Rate-Limit."""
+        import tempfile
+        from pathlib import Path
+        from goal_store import reset_goal_store_for_tests
+        from goal_inquiry import (
+            build_goal_digest,
+            format_goal_digest,
+            maybe_emit_goal_digest,
+            reset_inquiry_store_for_tests,
+        )
+        from isaac_core import detect_intent, Intent, IsaacKernel
+
+        self.assertEqual(detect_intent("ziele digest"), Intent.GOAL_DIGEST)
+        self.assertEqual(detect_intent("goal digest"), Intent.GOAL_DIGEST)
+        self.assertNotEqual(detect_intent("ziele"), Intent.GOAL_DIGEST)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gstore = reset_goal_store_for_tests(Path(tmp) / "g.json")
+            istore = reset_inquiry_store_for_tests(Path(tmp) / "i.json")
+            state_path = Path(tmp) / "digest_state.json"
+            goal = gstore.add_owner_goal("Digest-Ziel Autonomie", priority=0.9)
+            gstore.add_subgoal(goal.id, "Nächster Schritt", origin="planner")
+            istore.add(goal.id, "Welches Budget hat Priorität?", subgoal_id="")
+
+            dig = build_goal_digest(goal_store=gstore, inquiry_store=istore)
+            self.assertFalse(dig.get("empty"))
+            self.assertEqual(dig.get("active_goal_count"), 1)
+            self.assertEqual(dig.get("open_inquiry_count"), 1)
+            text = format_goal_digest(dig)
+            self.assertIn("[Goal-Digest]", text)
+            self.assertIn("Digest-Ziel", text)
+            self.assertIn("Budget", text)
+
+            notes: list[str] = []
+            with patch.dict("os.environ", {"GOAL_DIGEST_INTERVAL": "3600"}, clear=False):
+                r1 = maybe_emit_goal_digest(
+                    on_note=notes.append,
+                    force=False,
+                    state_path=state_path,
+                    goal_store=gstore,
+                    inquiry_store=istore,
+                )
+                self.assertTrue(r1.get("emitted"))
+                self.assertEqual(len(notes), 1)
+                r2 = maybe_emit_goal_digest(
+                    on_note=notes.append,
+                    force=False,
+                    state_path=state_path,
+                    goal_store=gstore,
+                    inquiry_store=istore,
+                )
+                self.assertFalse(r2.get("emitted"))
+                self.assertEqual(len(notes), 1)
+                r3 = maybe_emit_goal_digest(
+                    on_note=notes.append,
+                    force=True,
+                    state_path=state_path,
+                    goal_store=gstore,
+                    inquiry_store=istore,
+                )
+                self.assertTrue(r3.get("emitted"))
+                self.assertEqual(len(notes), 2)
+
+            kernel = object.__new__(IsaacKernel)
+            out = kernel._handle_goal_digest()
+            self.assertIn("[Goal-Digest]", out)
+
     def test_goal_intent_routing_and_handler(self):
         import tempfile
         from goal_store import reset_goal_store_for_tests

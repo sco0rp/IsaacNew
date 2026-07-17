@@ -86,6 +86,7 @@ class Intent:
     FACT_SET    = "fact_set"
     GOAL_SET    = "goal_set"
     GOAL_LIST   = "goal_list"
+    GOAL_DIGEST = "goal_digest"
     DIRECTIVE   = "directive"
     STATUS      = "status"
     KI_STATUS   = "ki_status"   # KI-Dialog + Skill-Übersicht
@@ -123,6 +124,13 @@ EXPLICIT_COMMAND_PATTERNS = [
         r"^ziele anzeigen$",
         r"^zeige ziele$",
         r"^zeig ziele$",
+    ]),
+    (Intent.GOAL_DIGEST, [
+        r"^ziele?\s+digest$",
+        r"^goal\s+digest$",
+        r"^digest\s+ziele?$",
+        r"^ziel-digest$",
+        r"^goal-digest$",
     ]),
     (Intent.DIRECTIVE,  [r"^direktive:", r"^immer:", r"^niemals:"]),
     (Intent.BROADCAST,  [r"^broadcast:", r"^alle instanzen:", r"^frage alle"]),
@@ -403,6 +411,7 @@ class IsaacKernel:
             Intent.FACT_SET:   self._handle_fact,
             Intent.GOAL_SET:   self._handle_goal,
             Intent.GOAL_LIST:  self._handle_goal_list,
+            Intent.GOAL_DIGEST: self._handle_goal_digest,
             Intent.DIRECTIVE:  self._handle_directive,
             Intent.STATUS:     self._handle_status,
             Intent.KI_STATUS:  self._handle_ki_status,
@@ -1786,6 +1795,18 @@ class IsaacKernel:
 
         return get_goal_store().format_goal_list()
 
+    def _handle_goal_digest(self, *_args) -> str:
+        """Slice 4: gebündelter Goal-Digest (Inquiries + Progress an goal_id)."""
+        from goal_inquiry import format_goal_digest, maybe_emit_goal_digest
+
+        # Expliziter Owner-Abruf: immer frisch, markiert emit für Rate-Limit-State
+        text = format_goal_digest()
+        try:
+            maybe_emit_goal_digest(force=True)
+        except Exception:
+            pass
+        return text
+
     async def _handle_directive(self, text: str) -> str:
         m = re.match(r'^(?:direktive|immer|niemals):\s*(.+)$', text, re.I)
         if m:
@@ -1971,6 +1992,7 @@ class IsaacKernel:
             Intent.FACT_SET: ("korrektur:", "fakt:", "weiß:"),
             Intent.GOAL_SET: ("ziel:", "goal:", "mein ziel:", "meine ziele:", "ziel erledigt:", "ziel pause:"),
             Intent.GOAL_LIST: ("ziele", "meine ziele", "list goals"),
+            Intent.GOAL_DIGEST: ("ziele digest", "ziel digest", "goal digest", "digest ziele"),
             Intent.DIRECTIVE: ("direktive:", "immer:", "niemals:"),
             Intent.BROADCAST: ("broadcast:", "alle instanzen:", "frage alle"),
             Intent.SPLIT: ("split:", "aufteilen:"),

@@ -306,7 +306,7 @@ class BackgroundLoop:
             log.debug("Owner-Autonomie-Zyklus: %s", e)
 
     async def _goal_autonomy_zyklus(self):
-        """Motivation-Tick: aktive Steffen-Ziele → Subgoal-Tasks."""
+        """Motivation-Tick: aktive Steffen-Ziele → Subgoal-Tasks + Digest (rate-limited)."""
         try:
             from motivation import run_goal_motivation_cycle
 
@@ -320,6 +320,19 @@ class BackgroundLoop:
                 )
         except Exception as e:
             log.debug("Goal-Autonomie-Zyklus: %s", e)
+        # Slice 4: gebündelter Digest (keine Inquiry-Spam-Flut)
+        try:
+            from goal_inquiry import maybe_emit_goal_digest
+
+            dig = maybe_emit_goal_digest(on_note=self._notiere, force=False)
+            if dig.get("emitted"):
+                log.info(
+                    "Goal-Digest emitted inq=%s goals=%s",
+                    (dig.get("digest") or {}).get("open_inquiry_count"),
+                    (dig.get("digest") or {}).get("active_goal_count"),
+                )
+        except Exception as e:
+            log.debug("Goal-Digest: %s", e)
 
     async def _decay_check(self):
         try:

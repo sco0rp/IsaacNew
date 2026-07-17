@@ -972,36 +972,49 @@ class Executor:
             m in (task.prompt or "").lower()
             for m in ("wetter", "weather", "temperatur", "vorhersage")
         )
-        if weatherish and (result.abstract or result.hits):
-            synth_prompt = (
-                f"Beantworte die Wetterfrage mit den gelieferten LIVE-Daten.\n"
-                f"Frage: {task.prompt}\n\n"
-                f"Daten:\n{kontext}\n\n"
-                "Regeln: Nenne Ort, Tage, Temperatur min/max, Bedingungen und Quelle. "
-                "Keine Platzhalter wie [Temperatur]. Erfinde keine Zahlen."
+        # Live-Wetter-APIs liefern bereits fertige Fakten → nicht per LLM verwässern
+        if weatherish and result.abstract and (
+            "Open-Meteo" in result.abstract or "wttr.in" in result.abstract or "Aktuell in" in result.abstract
+        ):
+            antwort = (
+                result.abstract.strip()
+                + "\n\nQuellen: Open-Meteo / wttr.in (Live-Web-Abruf)."
             )
-            system = (
-                "Du bist ein knapper Wetter-Assistent. "
-                "Nutze nur die gelieferten Live-Daten. Keine Halluzinationen."
-            )
+            if tool_context:
+                antwort += f"\n\nZusatz:\n{tool_context[:500]}"
+            prov = "weather_api"
+            task.log("Wetter: Live-API-Antwort ohne LLM-Umschreibung")
         else:
-            synth_prompt = (
-                f"Basierend auf diesen Suchergebnissen, beantworte: {task.prompt}\n\n"
-                f"Suchergebnisse:\n{kontext}\n\n"
-                f"Antworte strukturiert mit Quellenangaben. "
-                f"Erfinde keine Fakten und keine Platzhalter."
+            if weatherish and (result.abstract or result.hits):
+                synth_prompt = (
+                    f"Beantworte die Wetterfrage mit den gelieferten LIVE-Daten.\n"
+                    f"Frage: {task.prompt}\n\n"
+                    f"Daten:\n{kontext}\n\n"
+                    "Regeln: Nenne Ort, Tage, Temperatur min/max, Bedingungen und Quelle. "
+                    "Keine Platzhalter wie [Temperatur]. Erfinde keine Zahlen."
+                )
+                system = (
+                    "Du bist ein knapper Wetter-Assistent. "
+                    "Nutze nur die gelieferten Live-Daten. Keine Halluzinationen."
+                )
+            else:
+                synth_prompt = (
+                    f"Basierend auf diesen Suchergebnissen, beantworte: {task.prompt}\n\n"
+                    f"Suchergebnisse:\n{kontext}\n\n"
+                    f"Antworte strukturiert mit Quellenangaben. "
+                    f"Erfinde keine Fakten und keine Platzhalter."
+                )
+                system = (
+                    "Du bist ein Recherche-Synthesizer. "
+                    "Fasse nur die gelieferten Suchergebnisse zusammen; halluziniere nicht."
+                )
+            if tool_context:
+                synth_prompt = f"{synth_prompt}\n\nZusätzlicher Tool-Kontext:\n{tool_context}"
+            antwort, prov = await self.relay.ask_with_fallback(
+                synth_prompt,
+                system=system,
+                task_id=task.id
             )
-            system = (
-                "Du bist ein Recherche-Synthesizer. "
-                "Fasse nur die gelieferten Suchergebnisse zusammen; halluziniere nicht."
-            )
-        if tool_context:
-            synth_prompt = f"{synth_prompt}\n\nZusätzlicher Tool-Kontext:\n{tool_context}"
-        antwort, prov = await self.relay.ask_with_fallback(
-            synth_prompt,
-            system=system,
-            task_id=task.id
-        )
         task.antwort       = antwort
         task.provider_used = prov
         task.status        = TaskStatus.DONE
@@ -1044,37 +1057,49 @@ class Executor:
             m in (query or "").lower()
             for m in ("wetter", "weather", "temperatur", "vorhersage")
         )
-        if weatherish and (result.abstract or result.hits):
-            synth_prompt = (
-                f"Beantworte die Wetter-Recherche mit LIVE-Daten.\n"
-                f"Frage: {query}\n\n"
-                f"Daten:\n{kontext}\n\n"
-                "Kurzfassung mit Ort, Tagen, Temperaturen, Bedingungen, Quellen. "
-                "Keine Platzhalter, keine erfundenen Werte."
+        if weatherish and result.abstract and (
+            "Open-Meteo" in result.abstract or "wttr.in" in result.abstract or "Aktuell in" in result.abstract
+        ):
+            antwort = (
+                result.abstract.strip()
+                + "\n\nQuellen: Open-Meteo / wttr.in (Live-Web-Abruf)."
             )
-            system = (
-                "Du bist ein knapper Wetter-Rechercheur. "
-                "Nur gelieferte Live-Daten; halluziniere nicht."
-            )
+            if tool_context:
+                antwort += f"\n\nZusatz:\n{tool_context[:500]}"
+            prov = "weather_api"
+            task.log("Wetter-Recherche: Live-API-Antwort ohne LLM-Umschreibung")
         else:
-            synth_prompt = (
-                f"Führe eine eigenständige Web-Recherche durch und beantworte: {query}\n\n"
-                f"Recherche-Ergebnisse:\n{kontext}\n\n"
-                "Strukturiere die Antwort mit:\n"
-                "1) Kurzfassung\n2) Kernerkenntnisse\n3) Quellenliste (URL/Titel)\n"
-                "Markiere Unsicherheiten explizit. Keine erfundenen Fakten."
+            if weatherish and (result.abstract or result.hits):
+                synth_prompt = (
+                    f"Beantworte die Wetter-Recherche mit LIVE-Daten.\n"
+                    f"Frage: {query}\n\n"
+                    f"Daten:\n{kontext}\n\n"
+                    "Kurzfassung mit Ort, Tagen, Temperaturen, Bedingungen, Quellen. "
+                    "Keine Platzhalter, keine erfundenen Werte."
+                )
+                system = (
+                    "Du bist ein knapper Wetter-Rechercheur. "
+                    "Nur gelieferte Live-Daten; halluziniere nicht."
+                )
+            else:
+                synth_prompt = (
+                    f"Führe eine eigenständige Web-Recherche durch und beantworte: {query}\n\n"
+                    f"Recherche-Ergebnisse:\n{kontext}\n\n"
+                    "Strukturiere die Antwort mit:\n"
+                    "1) Kurzfassung\n2) Kernerkenntnisse\n3) Quellenliste (URL/Titel)\n"
+                    "Markiere Unsicherheiten explizit. Keine erfundenen Fakten."
+                )
+                system = (
+                    "Du bist ein Recherche-Analyst. Nutze nur die gelieferten Quellen, "
+                    "halluziniere keine Fakten, und nenne Unsicherheiten."
+                )
+            if tool_context:
+                synth_prompt = f"{synth_prompt}\n\nZusätzlicher Tool-Kontext:\n{tool_context}"
+            antwort, prov = await self.relay.ask_with_fallback(
+                synth_prompt,
+                system=system,
+                task_id=task.id,
             )
-            system = (
-                "Du bist ein Recherche-Analyst. Nutze nur die gelieferten Quellen, "
-                "halluziniere keine Fakten, und nenne Unsicherheiten."
-            )
-        if tool_context:
-            synth_prompt = f"{synth_prompt}\n\nZusätzlicher Tool-Kontext:\n{tool_context}"
-        antwort, prov = await self.relay.ask_with_fallback(
-            synth_prompt,
-            system=system,
-            task_id=task.id,
-        )
         task.antwort = antwort
         task.provider_used = prov
         task.status = TaskStatus.DONE

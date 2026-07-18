@@ -415,27 +415,127 @@ class Memory:
         if not terms:
             return []
         fts_query = " OR ".join(terms[:8])
+        # Temporal bias (Graphiti-inspired, no graph DB):
+        # goal_latest.* before goal_progress.*; then confidence.
+        order_sql = (
+            "ORDER BY "
+            "CASE "
+            "WHEN f.key LIKE 'goal_latest.%' THEN 0 "
+            "WHEN f.key LIKE 'goal_progress.%' THEN 2 "
+            "ELSE 1 END, "
+            "f.confidence DESC"
+        )
         with _conn() as con:
             try:
                 rows = con.execute(
-                    """SELECT f.* FROM facts f
+                    f"""SELECT f.* FROM facts f
                        JOIN facts_fts ON facts_fts.rowid = f.id
                        WHERE facts_fts MATCH ?
-                       ORDER BY f.confidence DESC LIMIT ?""",
-                    (fts_query, limit),
+                       {order_sql} LIMIT ?""",
+                    (fts_query, max(limit * 2, limit)),
                 ).fetchall()
             except sqlite3.OperationalError:
                 like = f"%{' '.join(terms[:3])}%"
                 rows = con.execute(
-                    """SELECT * FROM facts
-                       WHERE key LIKE ? OR value LIKE ?
-                       ORDER BY confidence DESC LIMIT ?""",
-                    (like, like, limit),
+                    f"""SELECT f.* FROM facts f
+                       WHERE f.key LIKE ? OR f.value LIKE ?
+                       {order_sql} LIMIT ?""",
+                    (like, like, max(limit * 2, limit)),
                 ).fetchall()
-        return [
+        facts = [
             dict(r) for r in rows
             if float(r["confidence"] or 0.0) >= MIN_RETRIEVAL_CONFIDENCE
         ]
+        return self.prioritize_temporal_facts(facts, limit=limit)
+
+    @staticmethod
+    def prioritize_temporal_facts(
+        facts: list[dict],
+        *,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Prefer goal_latest over goal_progress for the same goal_id.
+
+        Keeps non-goal facts in confidence order. Pure reordering/dedupe —
+        no Graphiti/Zep dependency.
+        """
+        if not facts:
+            return []
+        latest_by_goal: dict[str, dict] = {}
+        progress_by_goal: dict[str, list[dict]] = {}
+        other: list[dict] = []
+        for fact in facts:
+            key = str(fact.get("key") or "")
+            if key.startswith("goal_latest."):
+                gid = key[len("goal_latest.") :].strip()
+                if not gid:
+                    other.append(fact)
+                    continue
+                prev = latest_by_goal.get(gid)
+                if prev is None or float(fact.get("confidence") or 0) > float(
+                    prev.get("confidence") or 0
+                ):
+                    latest_by_goal[gid] = fact
+            elif key.startswith("goal_progress."):
+                rest = key[len("goal_progress.") :]
+                gid = rest.split(".", 1)[0] if rest else ""
+                progress_by_goal.setdefault(gid or "_", []).append(fact)
+            else:
+                other.append(fact)
+
+        ranked: list[dict] = []
+        for fact in sorted(
+            latest_by_goal.values(),
+            key=lambda f: float(f.get("confidence") or 0),
+            reverse=True,
+        ):
+            ranked.append(fact)
+        other.sort(key=lambda f: float(f.get("confidence") or 0), reverse=True)
+        ranked.extend(other)
+        # Historical progress only when no current latest for that goal
+        for gid, plist in progress_by_goal.items():
+            if gid in latest_by_goal:
+                continue
+            plist.sort(key=lambda f: float(f.get("confidence") or 0), reverse=True)
+            ranked.extend(plist)
+        return ranked[: max(1, int(limit))]
+
+    def supersede_stale_goal_progress(
+        self,
+        goal_id: str,
+        *,
+        demote_to: float = 0.22,
+    ) -> int:
+        """When goal_latest is refreshed, demote older goal_progress confidences.
+
+        Returns number of rows updated. Fail-soft.
+        """
+        gid = (goal_id or "").strip()
+        if not gid:
+            return 0
+        prefix = f"goal_progress.{gid}."
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        floor = max(MIN_RETRIEVAL_CONFIDENCE, float(demote_to))
+        try:
+            with _conn() as con:
+                rows = con.execute(
+                    "SELECT key, confidence FROM facts WHERE key LIKE ?",
+                    (prefix + "%",),
+                ).fetchall()
+                n = 0
+                for row in rows:
+                    conf = float(row["confidence"] or 0.0)
+                    if conf <= floor:
+                        continue
+                    con.execute(
+                        "UPDATE facts SET confidence=?, updated=? WHERE key=?",
+                        (floor, ts, row["key"]),
+                    )
+                    n += 1
+                return n
+        except Exception as exc:
+            log.debug("supersede_stale_goal_progress: %s", exc)
+            return 0
 
     def all_facts(self) -> dict[str, str]:
         with _conn() as con:
@@ -677,7 +777,7 @@ class Memory:
             ):
                 facts.append(record)
                 seen_fact_keys.add(def_key)
-        facts = facts[:6]
+        facts = self.prioritize_temporal_facts(facts, limit=6)
         relevant_results = self.get_relevant_results(query, limit=4) if query else []
         relevant_procedures = self.search_procedures(query, limit=3) if query else []
         history = self.get_working_memory(n_history)

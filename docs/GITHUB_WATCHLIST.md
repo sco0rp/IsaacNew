@@ -14,9 +14,9 @@ Siehe auch: `docs/OPEN_SOURCE_PATTERNS.md`, `docs/LOCAL_LLM.md`, `docs/OPEN_INTE
 | [Mem0](https://github.com/mem0ai/mem0) | Memory-Layer | Adapter vorhanden (default OFF) |
 | [Cognee](https://github.com/topoteretes/cognee) | Graph-Memory | Adapter vorhanden |
 | [Letta](https://github.com/letta-ai/letta) | Companion + Memory-Ideen | `letta:` Companion |
-| [Graphiti](https://github.com/getzep/graphiti) | Temporal facts | **Muster only** (Phase 3 Plan) |
+| [Graphiti](https://github.com/getzep/graphiti) | Temporal facts | **Muster umgesetzt**: `goal_latest` > `goal_progress`, demote on update |
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Tool-Schema / computer-use | `hermes_compat` + eigene Module |
-| [browser-use](https://github.com/browser-use/browser-use) | Browser-Robustheit | Muster für `browser.py` bei Bugs |
+| [browser-use](https://github.com/browser-use/browser-use) | Browser-Robustheit | Nur bei konkretem Bug in `browser.py` (kein wholesale) |
 | [Agent_Memory_Techniques](https://github.com/NirDiamant/Agent_Memory_Techniques) | Lern-Notebooks | lesen, nicht installieren |
 
 ## Tier B — Goal-Autonomie (Muster → Phase 1 Plan)
@@ -39,14 +39,28 @@ Umsetzung: `goal_store` / `motivation` / `goal_inquiry` — kein Import der Repo
 
 | Projekt | Warum nur lesen |
 |---------|-----------------|
-| [OpenClaw](https://github.com/openclaw/openclaw) | Zweiter Kernel; Patterns: Session-Flush, Channel-Gates |
+| [OpenClaw](https://github.com/openclaw/openclaw) | Zweiter Kernel — **nicht** installieren |
 | NEOTH / Aivyx | Consent-tools / audit Ideen |
+
+### OpenClaw — übernommene *Ideen* (kein Runtime)
+
+1. **Session-Flush / Digest:** gebündelte Owner-Updates statt Event-Spam → `goal_digest.py`
+2. **Channel-Gates:** riskante Aktionen brauchen Policy → Constitution + Privilege (bereits)
+3. **Memory-Compaction:** „current“ vs Archiv → `goal_latest` vs demoted `goal_progress`
+
+### Hermes — übernommene *Ideen* (kein Runtime)
+
+1. **Tool-Schema mit Permissions** → `hermes_compat` + `tool_policy`
+2. **Computer-use getrennt vom Chat** → `computer_use` + Strategy `allow_tools`
+3. **Multi-layer memory labels** → typed facts/directives/procedures, keine Runtime-Übernahme
 
 ## Tier E — Anti-Liste
 
 CrewAI, AutoGPT, LangGraph wholesale, Ray, DeepSpeed, Megatron, verl,
-Mem0/Zep Cloud als Default, Companion-Theater, MCP-Subagent-Expansion.
+Mem0/Zep Cloud als Default, Companion-Theater, MCP-Subagent-Expansion,
+OpenClaw/Hermes/Cline als Orchestrator.
 
-## Aktive Arbeit
+## Status
 
-Goal-Härtung (Stop / Verify / Anti-Spam) — Checklist `06_goal_autonomy_checklist.txt`.
+Phase 1–2 Goal-Autonomie + Phase 3.1 Temporal Facts: siehe `06_goal_autonomy_checklist.txt`.
+Browser-use wholesale: **deferred** bis konkreter Defekt.

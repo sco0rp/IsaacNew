@@ -41,3 +41,11 @@ S3 INQUIRY / RESEARCH / LEARN (an goal_id)
 [x] Failure → recovery subgoal (cap: max 1 active recovery; kein Recovery-von-Recovery)
 [x] Subgoal-Verify: high score / success_criteria → subgoal done; optional goal done
 [x] Digest-Kanal gebündelt (Slice 4) — goal_digest.py + Background-Tick
+
+──────────────────────────────────────────────────────────────────────────────
+S4 TEMPORAL / WATCHLIST (Phase 3 — Graphiti-Muster, kein Framework)
+──────────────────────────────────────────────────────────────────────────────
+[x] goal_latest priorisiert vor goal_progress in search/retrieval
+[x] supersede_stale_goal_progress beim Update von goal_latest
+[x] docs/GITHUB_WATCHLIST.md: OpenClaw/Hermes Pattern-Notizen (read-only)
+[ ] browser-use wholesale — deferred (nur bei konkretem Bug)

@@ -363,14 +363,20 @@ def record_goal_learning_from_task(task: Any) -> dict[str, Any]:
                 confidence=0.55 if status == "done" else 0.35,
             )
             result["facts"] = 1
-            # Kurzer Index-Fakt für Retrieval
+            # Kurzer Index-Fakt für Retrieval (temporal current)
             mem.set_fact(
                 f"goal_latest.{goal_id}",
                 preview[:400],
                 source=f"goal:{goal_id}",
-                confidence=0.6 if status == "done" else 0.4,
+                confidence=0.65 if status == "done" else 0.45,
             )
             result["facts"] = 2
+            # Graphiti-inspired: demote archived progress when latest advances
+            try:
+                demoted = mem.supersede_stale_goal_progress(goal_id)
+                result["progress_demoted"] = demoted
+            except Exception:
+                result["progress_demoted"] = 0
 
         mem.log_development_event(
             event_type="goal_learning",

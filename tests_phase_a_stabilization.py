@@ -3788,6 +3788,55 @@ class TestPhase4Connect(unittest.TestCase):
             self.assertIn("Isaac Kernel härten", formatted)
             self.assertIn("open_q:", formatted)
 
+    def test_temporal_goal_latest_beats_progress(self):
+        """Phase 3.1: goal_latest ranked above goal_progress; demote on update."""
+        from memory import Memory, get_memory
+
+        mem = get_memory()
+        gid = "goal_temporal_test_1"
+        mem.set_fact(
+            f"goal_progress.{gid}.20260101000000",
+            "alter stand v1",
+            source=f"goal:{gid}",
+            confidence=0.8,
+        )
+        mem.set_fact(
+            f"goal_latest.{gid}",
+            "aktueller stand v2",
+            source=f"goal:{gid}",
+            confidence=0.5,
+        )
+        # Even with lower confidence, latest should rank first for same goal
+        ranked = Memory.prioritize_temporal_facts(
+            [
+                mem.get_fact_record(f"goal_progress.{gid}.20260101000000"),
+                mem.get_fact_record(f"goal_latest.{gid}"),
+            ],
+            limit=5,
+        )
+        self.assertEqual(ranked[0]["key"], f"goal_latest.{gid}")
+        self.assertTrue(
+            all(not (r.get("key") or "").startswith(f"goal_progress.{gid}.") for r in ranked)
+            or len(ranked) == 1
+        )
+        # When latest exists, progress for same goal is omitted
+        self.assertEqual(len(ranked), 1)
+
+        demoted = mem.supersede_stale_goal_progress(gid, demote_to=0.22)
+        self.assertGreaterEqual(demoted, 1)
+        prog = mem.get_fact_record(f"goal_progress.{gid}.20260101000000")
+        self.assertIsNotNone(prog)
+        self.assertLessEqual(float(prog["confidence"]), 0.22 + 1e-6)
+
+        # search path also prefers latest when query hits both values
+        hits = mem.search_facts("aktueller alter stand", limit=5)
+        keys = [h.get("key") for h in hits]
+        if f"goal_latest.{gid}" in keys and f"goal_progress.{gid}.20260101000000" in keys:
+            self.assertLess(
+                keys.index(f"goal_latest.{gid}"),
+                keys.index(f"goal_progress.{gid}.20260101000000"),
+            )
+
     def test_goal_digest_emits_once_per_fingerprint(self):
         """Slice 4: digest emits on change, skips identical fingerprint."""
         import tempfile

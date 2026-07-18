@@ -3614,16 +3614,22 @@ class TestPhase4Connect(unittest.TestCase):
             inq = reset_inquiry_store_for_tests(Path(tmp) / "i.json")
             goal = store.add_owner_goal("Kernel Stabilität verbessern", priority=0.9)
             sg = store.add_subgoal(goal.id, "Infos sammeln", origin="planner")
-            # first attempt → plan
+            # first attempt → plan; later → work — no blind research tools
             self.assertEqual(choose_work_mode(goal, sg)[2], "plan")
+            self.assertFalse(choose_work_mode(goal, sg)[1])
             sg.attempts = 1
             mode = choose_work_mode(goal, sg)
-            self.assertEqual(mode[2], "research")
-            self.assertTrue(mode[1])  # allow_tools
+            self.assertEqual(mode[2], "plan")
+            self.assertFalse(mode[1])
+            sg.attempts = 3
+            mode = choose_work_mode(goal, sg)
+            self.assertEqual(mode[2], "work")
+            self.assertFalse(mode[1])
             # Research-Marker im Titel erzwingt research auch bei attempts=0
             g2 = store.add_owner_goal("Recherchiere Markt für Isaac-Device", priority=0.8)
             s2 = store.add_subgoal(g2.id, "Start", origin="planner")
             self.assertEqual(choose_work_mode(g2, s2)[2], "research")
+            self.assertTrue(choose_work_mode(g2, s2)[1])
             prompt = build_goal_prompt(goal, sg, mode="research")
             self.assertIn(goal.id, prompt)
             self.assertIn("Owner-Ziel-ID", prompt)
@@ -3649,6 +3655,9 @@ class TestPhase4Connect(unittest.TestCase):
             self.assertEqual(out.get("goal_id"), goal.id)
             self.assertGreaterEqual(out.get("inquiries", 0), 1)
             self.assertGreaterEqual(out.get("facts", 0), 1)
+            # High-score success marks subgoal done
+            self.assertEqual(out.get("subgoal_status"), "done")
+            self.assertEqual(store.subgoals[sg.id].status, "done")
             open_inq = inq.list_open(goal.id)
             self.assertTrue(open_inq)
             # fact provenance
@@ -3656,6 +3665,99 @@ class TestPhase4Connect(unittest.TestCase):
             latest = get_memory().get_fact_record(f"goal_latest.{goal.id}")
             self.assertIsNotNone(latest)
             self.assertIn("goal:", str(latest.get("source") or ""))
+
+    def test_goal_success_criteria_and_recovery_cap(self):
+        import tempfile
+        from goal_store import reset_goal_store_for_tests
+        from goal_inquiry import record_goal_learning_from_task, reset_inquiry_store_for_tests
+        from executor import Task, TaskType, TaskStatus
+        from logic import QualityScore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = reset_goal_store_for_tests(Path(tmp) / "g.json")
+            reset_inquiry_store_for_tests(Path(tmp) / "i.json")
+            goal = store.add_owner_goal(
+                "Device bauen",
+                priority=0.9,
+                success_criteria="prototyp fertig getestet",
+            )
+            sg = store.add_subgoal(goal.id, "Bauen", origin="planner")
+            task = Task(
+                id="tcrit1",
+                typ=TaskType.CHAT,
+                prompt="x",
+                beschreibung=f"goal:{goal.id}|crit",
+                retrieved_context={"goal_id": goal.id, "subgoal_id": sg.id},
+            )
+            task.status = TaskStatus.DONE
+            task.antwort = "Der Prototyp ist fertig und getestet."
+            task.score = QualityScore(total=4.0)  # below score gate; criteria still wins
+            out = record_goal_learning_from_task(task)
+            self.assertTrue(out.get("criteria_hit"))
+            self.assertEqual(out.get("subgoal_status"), "done")
+            self.assertEqual(store.goals[goal.id].status, "done")
+
+            # Recovery cap: fail once → one recovery; fail again on recovery → no second recovery
+            g2 = store.add_owner_goal("Netzwerk fixen", priority=0.7)
+            s2 = store.add_subgoal(g2.id, "Diagnose", origin="planner")
+            s2.attempts = 1
+            store.subgoals[s2.id] = s2
+            store.save()
+            tfail = Task(
+                id="tfail1",
+                typ=TaskType.CHAT,
+                prompt="x",
+                beschreibung=f"goal:{g2.id}|fail",
+                retrieved_context={"goal_id": g2.id, "subgoal_id": s2.id},
+            )
+            tfail.status = TaskStatus.FAILED
+            tfail.antwort = "timeout"
+            tfail.score = QualityScore(total=1.0)
+            out2 = record_goal_learning_from_task(tfail)
+            self.assertTrue(out2.get("recovery"))
+            self.assertEqual(store.count_active_recovery(g2.id), 1)
+            recovery = [
+                s
+                for s in store.list_subgoals(g2.id, status="active")
+                if s.origin == "failure_recovery"
+            ][0]
+            tfail2 = Task(
+                id="tfail2",
+                typ=TaskType.CHAT,
+                prompt="x",
+                beschreibung=f"goal:{g2.id}|fail2",
+                retrieved_context={"goal_id": g2.id, "subgoal_id": recovery.id},
+            )
+            tfail2.status = TaskStatus.FAILED
+            tfail2.antwort = "again"
+            tfail2.score = QualityScore(total=1.0)
+            out3 = record_goal_learning_from_task(tfail2)
+            self.assertFalse(out3.get("recovery"))
+            self.assertEqual(store.count_active_recovery(g2.id), 1)
+
+    def test_motivation_cooldown_skips_recent_subgoal(self):
+        import tempfile
+        from goal_store import reset_goal_store_for_tests
+        from motivation import rank_motivation_decisions
+        from goal_inquiry import reset_inquiry_store_for_tests
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = reset_goal_store_for_tests(Path(tmp) / "g.json")
+            reset_inquiry_store_for_tests(Path(tmp) / "i.json")
+            goal = store.add_owner_goal("Cooldown testen", priority=0.9)
+            sg = store.add_subgoal(goal.id, "Arbeit", origin="planner")
+            # freshly enqueued
+            import time as _t
+
+            sg.last_enqueued_at = _t.strftime("%Y-%m-%d %H:%M:%S")
+            store.subgoals[sg.id] = sg
+            store.save()
+            with patch.dict(os.environ, {"ISAAC_GOAL_SUBGOAL_COOLDOWN_S": "3600"}):
+                ranked = rank_motivation_decisions(store, limit=5)
+            self.assertEqual(len(ranked), 0)
+            with patch.dict(os.environ, {"ISAAC_GOAL_SUBGOAL_COOLDOWN_S": "0"}):
+                ranked2 = rank_motivation_decisions(store, limit=5)
+            self.assertEqual(len(ranked2), 1)
 
     def test_e2_trace_phases_include_evaluation_and_learning(self):
         """Evolution 2.0: DecisionTrace deckt Evaluation und Learning ab."""

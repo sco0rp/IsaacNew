@@ -84,6 +84,7 @@ class IsaacSubgoal:
     next_action_hint: str = ""
     attempts: int = 0
     last_outcome: str = ""
+    last_enqueued_at: str = ""  # anti-spam cooldown stamp
     created_at: str = ""
     updated_at: str = ""
 
@@ -101,6 +102,7 @@ class IsaacSubgoal:
             next_action_hint=str(data.get("next_action_hint") or ""),
             attempts=int(data.get("attempts") or 0),
             last_outcome=str(data.get("last_outcome") or ""),
+            last_enqueued_at=str(data.get("last_enqueued_at") or ""),
             created_at=str(data.get("created_at") or ""),
             updated_at=str(data.get("updated_at") or ""),
         )
@@ -253,6 +255,63 @@ class GoalStore:
         self.save()
         AuditLog.action("GoalStore", "goal_status", f"{g.id}:{status}")
         return g
+
+    def set_subgoal_status(self, subgoal_id: str, status: str) -> Optional[IsaacSubgoal]:
+        sg = self.subgoals.get(subgoal_id)
+        if not sg:
+            return None
+        sg.status = status
+        sg.updated_at = _now()
+        self.subgoals[sg.id] = sg
+        self.save()
+        AuditLog.action("GoalStore", "subgoal_status", f"{sg.id}:{status}")
+        return sg
+
+    def count_active_recovery(self, parent_goal_id: str) -> int:
+        return sum(
+            1
+            for s in self.subgoals.values()
+            if s.parent_goal_id == parent_goal_id
+            and s.status == "active"
+            and s.origin == "failure_recovery"
+        )
+
+    def maybe_complete_goal(self, goal_id: str) -> bool:
+        """Mark goal done when all subgoals are terminal (done/failed) and ≥1 done.
+
+        Returns True if goal was completed.
+        """
+        g = self.goals.get(goal_id)
+        if not g or g.status != "active":
+            return False
+        subs = [s for s in self.subgoals.values() if s.parent_goal_id == goal_id]
+        if not subs:
+            return False
+        active = [s for s in subs if s.status == "active"]
+        if active:
+            return False
+        if not any(s.status == "done" for s in subs):
+            return False
+        g.status = "done"
+        g.updated_at = _now()
+        self.goals[g.id] = g
+        self.save()
+        AuditLog.action("GoalStore", "goal_auto_done", g.id)
+        return True
+
+    def criteria_satisfied(self, goal: OwnerGoal, text: str) -> bool:
+        """Lightweight keyword match of success_criteria against result text."""
+        criteria = (goal.success_criteria or "").strip().lower()
+        if not criteria or len(criteria) < 4:
+            return False
+        body = (text or "").strip().lower()
+        if not body:
+            return False
+        tokens = [t for t in re.split(r"[^\wäöüÄÖÜß]+", criteria) if len(t) >= 4]
+        if not tokens:
+            return criteria in body
+        hits = sum(1 for t in tokens if t in body)
+        return hits >= max(1, (len(tokens) + 1) // 2)
 
     def format_status_block(self, *, limit: int = 8) -> str:
         active = self.list_goals(status="active")[:limit]

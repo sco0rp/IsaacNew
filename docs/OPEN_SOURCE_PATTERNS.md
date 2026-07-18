@@ -78,3 +78,5 @@ Cloud: `COGNEE_BASE_URL` + `COGNEE_API_KEY` + `ISAAC_COGNEE_ALLOW_CLOUD=1`. Seed
 4. Verletzt sie Do-NOT-expand (Human Layer, Dashboard-Redesign, Cloud, MCP-Subagents)?
 
 Wenn nein → nur in `05_evolution2_checklist.txt` notieren, nicht implementieren.
+
+**Watchlist (GitHub-Scan, Tier A–E):** `docs/GITHUB_WATCHLIST.md`

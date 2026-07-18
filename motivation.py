@@ -19,6 +19,7 @@ from goal_store import GoalStore, IsaacSubgoal, OwnerGoal, get_goal_store
 log = logging.getLogger("Isaac.Motivation")
 
 DEFAULT_MAX_GOAL_TASKS_PER_TICK = 3  # Meltdown-Schutz, kein Ambitions-Cap
+DEFAULT_SUBGOAL_COOLDOWN_S = 1800  # 2× default autonomy interval (900s)
 
 
 def goal_autonomy_enabled() -> bool:
@@ -36,6 +37,37 @@ def max_goal_tasks_per_tick() -> int:
         return DEFAULT_MAX_GOAL_TASKS_PER_TICK
 
 
+def subgoal_cooldown_s() -> float:
+    raw = os.getenv("ISAAC_GOAL_SUBGOAL_COOLDOWN_S")
+    if raw is None or str(raw).strip() == "":
+        return float(DEFAULT_SUBGOAL_COOLDOWN_S)
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return float(DEFAULT_SUBGOAL_COOLDOWN_S)
+
+
+def _parse_ts(value: str) -> Optional[float]:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        return time.mktime(time.strptime(raw, "%Y-%m-%d %H:%M:%S"))
+    except Exception:
+        return None
+
+
+def _subgoal_on_cooldown(subgoal: IsaacSubgoal, *, now: Optional[float] = None) -> bool:
+    cool = subgoal_cooldown_s()
+    if cool <= 0:
+        return False
+    ts = _parse_ts(subgoal.last_enqueued_at)
+    if ts is None:
+        return False
+    t = now if now is not None else time.time()
+    return (t - ts) < cool
+
+
 @dataclass(frozen=True)
 class MotivationDecision:
     goal_id: str
@@ -51,12 +83,28 @@ class MotivationDecision:
 
 
 def ensure_subgoals_for_active_goals(store: Optional[GoalStore] = None) -> list[IsaacSubgoal]:
-    """Stellt sicher, dass jedes aktive Owner-Goal ≥1 aktives Subgoal hat."""
+    """Stellt sicher, dass jedes aktive Owner-Goal ≥1 aktives Subgoal hat.
+
+    Skip auto-planner when open owner inquiries exist for that goal
+    (wait for Steffen) or when only recovery path should run.
+    """
     gs = store or get_goal_store()
     created: list[IsaacSubgoal] = []
+    open_by_goal: dict[str, int] = {}
+    try:
+        from goal_inquiry import get_inquiry_store
+
+        for item in get_inquiry_store().list_open():
+            open_by_goal[item.goal_id] = open_by_goal.get(item.goal_id, 0) + 1
+    except Exception:
+        pass
+
     for goal in gs.list_goals(status="active"):
         existing = gs.list_subgoals(goal.id, status="active")
         if existing:
+            continue
+        if open_by_goal.get(goal.id, 0) > 0:
+            log.debug("skip auto-subgoal for %s: open inquiries", goal.id)
             continue
         hint = (
             f"Zerlege das Owner-Ziel in konkrete nächste Schritte und beginne mit dem wichtigsten. "
@@ -74,12 +122,13 @@ def ensure_subgoals_for_active_goals(store: Optional[GoalStore] = None) -> list[
 
 
 def _score_pair(goal: OwnerGoal, subgoal: IsaacSubgoal) -> tuple[float, str]:
+    from goal_inquiry import max_subgoal_attempts
+
     score = float(goal.priority) * 10.0
     reasons: list[str] = [f"priority={goal.priority:.2f}"]
     # Frische Goals pushen
-    try:
-        # updated_at format "%Y-%m-%d %H:%M:%S"
-        updated = time.mktime(time.strptime(goal.updated_at, "%Y-%m-%d %H:%M:%S"))
+    updated = _parse_ts(goal.updated_at)
+    if updated is not None:
         age_h = max(0.0, (time.time() - updated) / 3600.0)
         if age_h < 6:
             score += 2.0
@@ -87,14 +136,17 @@ def _score_pair(goal: OwnerGoal, subgoal: IsaacSubgoal) -> tuple[float, str]:
         elif age_h > 72:
             score += 1.5
             reasons.append("stale_goal_boost")
-    except Exception:
-        pass
-    # Failure recovery: mehr Attempts → höherer Fokus (kein Aufgeben)
-    if subgoal.attempts > 0:
-        score += min(5.0, float(subgoal.attempts) * 1.2)
-        reasons.append(f"attempts={subgoal.attempts}")
+    attempts = int(subgoal.attempts or 0)
+    max_att = max_subgoal_attempts()
+    # Early retries: slight boost; past half-cap: dampen (anti sticky spam)
+    if 0 < attempts <= max(1, max_att // 2):
+        score += min(2.0, float(attempts) * 0.5)
+        reasons.append(f"attempts={attempts}")
+    elif attempts > max(1, max_att // 2):
+        score -= min(4.0, float(attempts - max_att // 2) * 0.8)
+        reasons.append(f"attempts_dampen={attempts}")
     if subgoal.origin == "failure_recovery":
-        score += 3.0
+        score += 2.0
         reasons.append("failure_recovery")
     if not (subgoal.next_action_hint or "").strip():
         score += 0.5
@@ -102,6 +154,9 @@ def _score_pair(goal: OwnerGoal, subgoal: IsaacSubgoal) -> tuple[float, str]:
     if goal.owner_confirmed:
         score += 1.0
         reasons.append("owner_confirmed")
+    if _subgoal_on_cooldown(subgoal):
+        score -= 100.0
+        reasons.append("cooldown")
     return score, ",".join(reasons)
 
 
@@ -109,21 +164,38 @@ def rank_motivation_decisions(
     store: Optional[GoalStore] = None,
     *,
     limit: Optional[int] = None,
+    include_cooldown: bool = False,
 ) -> list[MotivationDecision]:
     gs = store or get_goal_store()
     ensure_subgoals_for_active_goals(gs)
     decisions: list[MotivationDecision] = []
-    from goal_inquiry import build_goal_prompt, choose_work_mode
+    from goal_inquiry import build_goal_prompt, choose_work_mode, max_subgoal_attempts
 
+    max_att = max_subgoal_attempts()
     for goal in gs.list_goals(status="active"):
         for sg in gs.list_subgoals(goal.id, status="active"):
+            # Attempt cap: terminal before ranking
+            if int(sg.attempts or 0) >= max_att:
+                gs.set_subgoal_status(sg.id, "failed")
+                continue
+            if (not include_cooldown) and _subgoal_on_cooldown(sg):
+                continue
             score, reason = _score_pair(goal, sg)
+            if score < -50:
+                # Hard cooldown marker left score very low
+                continue
             task_type, allow_tools, mode = choose_work_mode(goal, sg)
             # metadata overrides (Owner darf Tools/Mode erzwingen)
             meta = goal.metadata or {}
             if "allow_tools" in meta:
                 allow_tools = bool(meta.get("allow_tools"))
-            if meta.get("task_type"):
+            if meta.get("task_type") and str(meta.get("task_type")).lower() not in {
+                "research",
+                "recherche",
+            }:
+                # task_type override without research markers must not re-enable tools
+                task_type = str(meta.get("task_type"))
+            elif meta.get("task_type"):
                 task_type = str(meta.get("task_type"))
             prompt = build_goal_prompt(goal, sg, mode=mode)
             decisions.append(
@@ -187,11 +259,13 @@ async def run_goal_motivation_cycle(
 
     exe = get_executor()
     for dec in decisions:
-        # Subgoal attempts erhöhen
+        # Subgoal attempts + enqueue stamp (anti-spam cooldown)
         sg = gs.subgoals.get(dec.subgoal_id)
         if sg:
+            now_s = time.strftime("%Y-%m-%d %H:%M:%S")
             sg.attempts = int(sg.attempts or 0) + 1
-            sg.updated_at = time.strftime("%Y-%m-%d %H:%M:%S")
+            sg.last_enqueued_at = now_s
+            sg.updated_at = now_s
             if not (sg.next_action_hint or "").strip():
                 sg.next_action_hint = dec.prompt[:300]
             gs.subgoals[sg.id] = sg

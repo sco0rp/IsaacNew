@@ -41,6 +41,7 @@ class ExternalMemoryConfig:
     mem0_enabled: bool = False
     cognee_enabled: bool = False
     letta_enabled: bool = False
+    open_interpreter_enabled: bool = False
     write_enabled: bool = False
     min_score: float = 5.0
     search_timeout_s: float = 2.5
@@ -54,13 +55,23 @@ class ExternalMemoryConfig:
     mem0_dir: Path = Path()
     cognee_dir: Path = Path()
     letta_bin: str = "letta"
+    open_interpreter_bin: str = "interpreter"
+    open_interpreter_sandbox: str = "read-only"
+    open_interpreter_provider: str = "openrouter"
+    open_interpreter_model: str = "openai/gpt-4o-mini"
+    open_interpreter_timeout_s: float = 180.0
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_llm: str = "llama3.1:8b"
     ollama_embed: str = "nomic-embed-text:latest"
 
     @property
     def any_enabled(self) -> bool:
-        return self.mem0_enabled or self.cognee_enabled or self.letta_enabled
+        return (
+            self.mem0_enabled
+            or self.cognee_enabled
+            or self.letta_enabled
+            or self.open_interpreter_enabled
+        )
 
 
 def load_external_memory_config() -> ExternalMemoryConfig:
@@ -78,6 +89,7 @@ def load_external_memory_config() -> ExternalMemoryConfig:
         mem0_enabled=_env_bool("ISAAC_MEM0_ENABLED", False),
         cognee_enabled=_env_bool("ISAAC_COGNEE_ENABLED", False),
         letta_enabled=_env_bool("ISAAC_LETTA_ENABLED", False),
+        open_interpreter_enabled=_env_bool("ISAAC_OPEN_INTERPRETER_ENABLED", False),
         write_enabled=_env_bool("ISAAC_EXTERNAL_MEMORY_WRITE", False),
         min_score=_env_float("ISAAC_EXTERNAL_MEMORY_MIN_SCORE", 5.0),
         search_timeout_s=_env_float("ISAAC_EXTERNAL_MEMORY_SEARCH_TIMEOUT", 2.5),
@@ -95,6 +107,27 @@ def load_external_memory_config() -> ExternalMemoryConfig:
         mem0_dir=Path(os.getenv("ISAAC_MEM0_DIR") or (DATA_DIR / "mem0")),
         cognee_dir=Path(os.getenv("ISAAC_COGNEE_DIR") or (DATA_DIR / "cognee")),
         letta_bin=(os.getenv("LETTA_BIN") or "letta").strip() or "letta",
+        open_interpreter_bin=(
+            os.getenv("OPEN_INTERPRETER_BIN")
+            or os.getenv("ISAAC_OPEN_INTERPRETER_BIN")
+            or "interpreter"
+        ).strip()
+        or "interpreter",
+        open_interpreter_sandbox=(
+            os.getenv("ISAAC_OPEN_INTERPRETER_SANDBOX") or "read-only"
+        ).strip()
+        or "read-only",
+        open_interpreter_provider=(
+            os.getenv("ISAAC_OPEN_INTERPRETER_PROVIDER") or "openrouter"
+        ).strip()
+        or "openrouter",
+        open_interpreter_model=(
+            os.getenv("ISAAC_OPEN_INTERPRETER_MODEL") or "openai/gpt-4o-mini"
+        ).strip()
+        or "openai/gpt-4o-mini",
+        open_interpreter_timeout_s=_env_float(
+            "ISAAC_OPEN_INTERPRETER_TIMEOUT", 180.0
+        ),
         ollama_host=ollama_host,
         ollama_llm=(
             os.getenv("ISAAC_MEM0_OLLAMA_MODEL")

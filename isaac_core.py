@@ -98,6 +98,7 @@ class Intent:
     LOGIN_ADD   = "login_add"
     URL_ADD     = "url_add"
     LETTA       = "letta"           # Explizit: Letta Code Companion-CLI
+    OPEN_INTERPRETER = "open_interpreter"  # Explizit: Open Interpreter Companion
     EXT_MEMORY  = "ext_memory"      # Status: external memory adapters
 
 
@@ -167,6 +168,12 @@ EXPLICIT_COMMAND_PATTERNS = [
         r"^coding-agent\s*:",
         r"^coding agent\s*:",
     ]),
+    (Intent.OPEN_INTERPRETER, [
+        r"^oi\s*:",
+        r"^open-interpreter\s*:",
+        r"^open interpreter\s*:",
+        r"^interpreter\s*:",
+    ]),
     (Intent.EXT_MEMORY, [
         r"^external memory$",
         r"^external[- ]memory$",
@@ -174,6 +181,9 @@ EXPLICIT_COMMAND_PATTERNS = [
         r"^mem0 status$",
         r"^cognee status$",
         r"^letta status$",
+        r"^oi status$",
+        r"^open-interpreter status$",
+        r"^open interpreter status$",
     ]),
 ]
 
@@ -447,6 +457,7 @@ class IsaacKernel:
             Intent.URL_ADD:    self._handle_url_add,
             Intent.EXT_MEMORY: self._handle_ext_memory_status,
             Intent.LETTA:      self._handle_letta,
+            Intent.OPEN_INTERPRETER: self._handle_open_interpreter,
         }
         if intent in direkt:
             result = direkt[intent](user_input)
@@ -2023,6 +2034,82 @@ class IsaacKernel:
         except Exception as exc:
             return f"[Letta] Fehler: {exc}"
 
+    def _handle_open_interpreter(self, text: str) -> str:
+        """Explicit Open Interpreter companion: 'oi: …' / 'interpreter: …'."""
+        prompt = text
+        for prefix in (
+            "oi:",
+            "open-interpreter:",
+            "open interpreter:",
+            "interpreter:",
+        ):
+            low = text.lower()
+            idx = low.find(prefix)
+            if idx >= 0:
+                prompt = text[idx + len(prefix) :].strip()
+                break
+        if not prompt:
+            return (
+                "[Open Interpreter] Format: oi: AUFGABE\n"
+                "Aliases: open-interpreter: | interpreter:\n"
+                "Flag: ISAAC_OPEN_INTERPRETER_ENABLED=1\n"
+                "Sandbox default: read-only "
+                "(ISAAC_OPEN_INTERPRETER_SANDBOX=workspace-write|danger-full-access)\n"
+                "Provider: OpenRouter via OPENROUTER_API_KEY "
+                "(siehe docs/OPEN_INTERPRETER.md)"
+            )
+        try:
+            from external_memory import get_external_memory_bridge
+            from privilege import steffen_ctx
+
+            bridge = get_external_memory_bridge()
+            if not bridge.cfg.open_interpreter_enabled:
+                return (
+                    "[Open Interpreter] Deaktiviert. Setze "
+                    "ISAAC_OPEN_INTERPRETER_ENABLED=1 und installiere den CLI "
+                    "(`interpreter` auf PATH)."
+                )
+            try:
+                from constitution import get_constitution
+
+                decision = get_constitution().validate_action(
+                    "system_command",
+                    {
+                        "command": "open-interpreter",
+                        "prompt": prompt[:200],
+                        "owner_approved": True,
+                        "risk": "normal",
+                        "audit_logged": True,
+                    },
+                )
+                if not decision.get("allowed", True):
+                    blocked = ", ".join(decision.get("blocked_by") or []) or "policy"
+                    return f"[Open Interpreter] Verfassung blockiert: {blocked}"
+            except Exception:
+                pass
+            try:
+                ok, reason = self.gate.authorize(
+                    "system_command",
+                    steffen_ctx("Open Interpreter companion"),
+                )
+                if not ok:
+                    return f"[Open Interpreter] Privilege verweigert: {reason}"
+            except Exception:
+                pass
+
+            result = bridge.open_interpreter.run(prompt)
+            sandbox = result.get("sandbox") or bridge.cfg.open_interpreter_sandbox
+            if result.get("ok"):
+                body = (result.get("text") or "").strip() or "(keine Ausgabe)"
+                return f"[Open Interpreter | sandbox={sandbox}]\n{body[:4000]}"
+            err = result.get("error") or "unbekannt"
+            body = (result.get("text") or "").strip()
+            if body:
+                return f"[Open Interpreter] Fehler: {err}\n{body[:2000]}"
+            return f"[Open Interpreter] Fehler: {err}"
+        except Exception as exc:
+            return f"[Open Interpreter] Fehler: {exc}"
+
     def _handle_pause(self, *_) -> str:
         self.gate.pause(steffen_ctx("Pause"))
         return "Isaac pausiert."
@@ -2065,6 +2152,24 @@ class IsaacKernel:
             Intent.PAUSE: ("pause", "stopp"),
             Intent.RESUME: ("weiter", "fortsetzen"),
             Intent.CANCEL: ("abbrechen ",),
+            Intent.LETTA: ("letta:", "coding-agent:", "coding agent:"),
+            Intent.OPEN_INTERPRETER: (
+                "oi:",
+                "open-interpreter:",
+                "open interpreter:",
+                "interpreter:",
+            ),
+            Intent.EXT_MEMORY: (
+                "external memory",
+                "external-memory",
+                "memory adapter",
+                "mem0 status",
+                "cognee status",
+                "letta status",
+                "oi status",
+                "open-interpreter status",
+                "open interpreter status",
+            ),
         }
         prefixes = explicit_prefixes.get(intent, ())
         if intent == Intent.URL_ADD:

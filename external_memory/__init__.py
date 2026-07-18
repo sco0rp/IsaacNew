@@ -1,4 +1,4 @@
-"""Optional external memory adapters (Mem0, Cognee, Letta).
+"""Optional external memory / companion adapters (Mem0, Cognee, Letta, Open Interpreter).
 
 Opt-in via env flags. Never replaces Isaac SQLite memory ownership.
 """

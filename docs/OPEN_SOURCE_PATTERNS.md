@@ -41,9 +41,10 @@ Optional BLAU-Ergänzung unter `external_memory/`. **Kein** Ersatz von `memory.p
 | Mem0 OSS (`mem0ai`) | Präferenz/Fakten-Hints → Retrieval | OFF | nur `ISAAC_EXTERNAL_MEMORY_WRITE=1` + Score-Gate |
 | Cognee | Graph-Memory (`remember`/`recall`) → `semantic_context` | OFF | wie Mem0 |
 | Letta Code CLI | Companion Coding-Agent, **nicht** Orchestrator | OFF | kein auto-write; nur `letta: …` |
+| Open Interpreter (Codex harness) | Companion CLI, **nicht** Orchestrator | OFF | nur `oi:` / `interpreter: …`; Sandbox default `read-only` |
 
-**Flags:** `ISAAC_MEM0_ENABLED`, `ISAAC_COGNEE_ENABLED`, `ISAAC_LETTA_ENABLED`, `ISAAC_EXTERNAL_MEMORY_WRITE`.  
-**Install:** `bash scripts/install_external_memory.sh` / `requirements-memory-extra.txt`.  
+**Flags:** `ISAAC_MEM0_ENABLED`, `ISAAC_COGNEE_ENABLED`, `ISAAC_LETTA_ENABLED`, `ISAAC_OPEN_INTERPRETER_ENABLED`, `ISAAC_EXTERNAL_MEMORY_WRITE`.  
+**Install:** `bash scripts/install_external_memory.sh` / `requirements-memory-extra.txt`; OI: Binary `interpreter` + `docs/OPEN_INTERPRETER.md`.  
 **Cloud:** Mem0/Cognee Cloud nur mit `*_ALLOW_CLOUD=1` (Default: local Ollama/Chroma).  
 Cloud: `COGNEE_BASE_URL` + `COGNEE_API_KEY` + `ISAAC_COGNEE_ALLOW_CLOUD=1`. Seed: `scripts/seed_cognee_cloud.py`.  
 **Fail-soft:** fehlende Packages → No-Op, Kernel bleibt runnable.

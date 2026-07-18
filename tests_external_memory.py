@@ -1,8 +1,9 @@
-"""Regression tests for optional external memory adapters (Mem0/Cognee/Letta)."""
+"""Regression tests for optional external memory adapters (Mem0/Cognee/Letta/OI)."""
 
 from __future__ import annotations
 
 import os
+import subprocess
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -14,6 +15,7 @@ class TestExternalMemoryConfig(unittest.TestCase):
             "ISAAC_MEM0_ENABLED",
             "ISAAC_COGNEE_ENABLED",
             "ISAAC_LETTA_ENABLED",
+            "ISAAC_OPEN_INTERPRETER_ENABLED",
             "ISAAC_EXTERNAL_MEMORY_WRITE",
         ]
         with patch.dict(os.environ, {k: "0" for k in keys}, clear=False):
@@ -28,6 +30,7 @@ class TestExternalMemoryConfig(unittest.TestCase):
             self.assertFalse(cfg.mem0_enabled)
             self.assertFalse(cfg.cognee_enabled)
             self.assertFalse(cfg.letta_enabled)
+            self.assertFalse(cfg.open_interpreter_enabled)
             self.assertFalse(cfg.write_enabled)
             bridge = get_external_memory_bridge(reset=True)
             self.assertFalse(bridge.any_enabled())
@@ -58,6 +61,7 @@ class TestExternalMemoryFailSoft(unittest.TestCase):
             self.assertIn("mem0", st["adapters"])
             self.assertIn("cognee", st["adapters"])
             self.assertIn("letta", st["adapters"])
+            self.assertIn("open_interpreter", st["adapters"])
 
     def test_remember_turn_respects_min_score(self):
         env = {
@@ -247,6 +251,71 @@ class TestIntentPatterns(unittest.TestCase):
         # Normal chat must not become letta
         self.assertEqual(detect_intent("Was ist 2+2?"), Intent.CHAT)
         self.assertEqual(detect_intent("Hallo Isaac"), Intent.CHAT)
+
+    def test_open_interpreter_intents(self):
+        from isaac_core import detect_intent, Intent
+
+        self.assertEqual(detect_intent("oi: list files"), Intent.OPEN_INTERPRETER)
+        self.assertEqual(
+            detect_intent("open-interpreter: review tests"),
+            Intent.OPEN_INTERPRETER,
+        )
+        self.assertEqual(
+            detect_intent("interpreter: say hi"),
+            Intent.OPEN_INTERPRETER,
+        )
+        self.assertEqual(detect_intent("oi status"), Intent.EXT_MEMORY)
+        # Normal chat / free-form interpreter talk must not trigger companion
+        self.assertEqual(detect_intent("Was ist ein Interpreter?"), Intent.CHAT)
+
+
+class TestOpenInterpreterAdapter(unittest.TestCase):
+    def test_disabled_by_default(self):
+        from external_memory import reset_external_memory_bridge
+        from external_memory.config import load_external_memory_config
+
+        with patch.dict(
+            "os.environ",
+            {"ISAAC_OPEN_INTERPRETER_ENABLED": "0"},
+            clear=False,
+        ):
+            reset_external_memory_bridge()
+            cfg = load_external_memory_config()
+            self.assertFalse(cfg.open_interpreter_enabled)
+
+    def test_run_invokes_exec_sandbox_when_enabled(self):
+        from external_memory.config import ExternalMemoryConfig
+        from external_memory.open_interpreter_adapter import OpenInterpreterAdapter
+
+        cfg = ExternalMemoryConfig(
+            open_interpreter_enabled=True,
+            open_interpreter_bin="/bin/true",
+            open_interpreter_sandbox="read-only",
+            open_interpreter_provider="openrouter",
+            open_interpreter_model="openai/gpt-4o-mini",
+            open_interpreter_timeout_s=30.0,
+        )
+        adapter = OpenInterpreterAdapter(cfg)
+        # Force path without relying on which()
+        adapter._tried = True
+        adapter._bin_path = "/bin/echo"
+        adapter._version = "test"
+
+        with patch("subprocess.run") as run_mock:
+            run_mock.return_value = type(
+                "P",
+                (),
+                {"returncode": 0, "stdout": "OI_OK\n", "stderr": ""},
+            )()
+            result = adapter.run("Reply OI_OK")
+        self.assertTrue(result["ok"])
+        self.assertIn("OI_OK", result["text"])
+        args = run_mock.call_args[0][0]
+        self.assertEqual(args[0], "/bin/echo")
+        self.assertEqual(args[1], "exec")
+        self.assertIn("--sandbox", args)
+        self.assertIn("read-only", args)
+        self.assertEqual(run_mock.call_args.kwargs.get("stdin"), subprocess.DEVNULL)
 
 
 class TestBridgeFormat(unittest.TestCase):

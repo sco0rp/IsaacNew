@@ -105,14 +105,17 @@ class TestWeatherSearchHelpers(unittest.TestCase):
         )
         self.assertEqual(intent, Intent.SEARCH)
 
-    def test_regelwerk_skips_weather_place_terms(self):
+    def test_regelwerk_skips_german_nouns_and_places(self):
         from regelwerk import Regelwerk
         rw = Regelwerk.__new__(Regelwerk)
         rw._regeln = {}
         rw._fragen = []
-        # should not flag place names in weather questions
+        # German nouns are capitalized — must NOT become "Was meinst du mit X"
         self.assertEqual(rw._erkenne_unbekannte_begriffe("Wetter morgen in Mühlhausen"), "")
         self.assertEqual(rw._erkenne_unbekannte_begriffe("99974 Mühlhausen Thüringen"), "")
+        self.assertEqual(rw._erkenne_unbekannte_begriffe("Erkläre mir die Architektur bitte"), "")
+        # Acronym may still be flagged
+        self.assertIn(rw._erkenne_unbekannte_begriffe("Bitte aktiviere TPM jetzt"), ("TPM", ""))
 
 
 if __name__ == "__main__":

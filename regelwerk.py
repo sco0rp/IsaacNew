@@ -306,21 +306,10 @@ class Regelwerk:
             if frage:
                 neue_fragen.append(frage)
 
-        # Lücke 3: Unbekannter Begriff — nicht bei Wetter/Ort/Suche
-        skip_term_q = False
-        try:
-            from search import looks_like_weather_query, looks_like_place_only_refinement
-            if looks_like_weather_query(steffen_input) or looks_like_place_only_refinement(steffen_input):
-                skip_term_q = True
-        except Exception:
-            pass
-        if re.search(r"\b\d{5}\b", steffen_input or ""):
-            skip_term_q = True
-        tl_in = (steffen_input or "").lower()
-        if any(k in tl_in for k in ("suche:", "search:", "recherche:", "recherchiere:")):
-            skip_term_q = True
-
-        unbekannt = "" if skip_term_q else self._erkenne_unbekannte_begriffe(steffen_input)
+        # Lücke 3: Unbekannter Begriff
+        # Deutsch schreibt Substantive groß — w[0].isupper() ist KEIN Eigennamen-Signal.
+        # Deshalb nur enge Fälle (Akronyme / explizite „was bedeutet X“-Muster), sonst Spam.
+        unbekannt = self._erkenne_unbekannte_begriffe(steffen_input)
         if unbekannt and self._term_already_asked(unbekannt):
             unbekannt = ""
         if unbekannt:
@@ -366,56 +355,82 @@ class Regelwerk:
         return False
 
     def _erkenne_unbekannte_begriffe(self, text: str) -> str:
-        """Findet möglicherweise unbekannte Eigennamen / Abkürzungen."""
+        """Findet unklare Begriffe — NICHT jedes deutsche Substantiv (die sind großgeschrieben).
+
+        Früher: w[0].isupper() → fast jedes Nomen (Wetter, Mühlhausen, Antwort) → Spam.
+        Jetzt nur:
+          - ALL-CAPS Akronyme (min. 3 Zeichen, z. B. MCP, TPM)
+          - explizite Meta-Fragen („was bedeutet X“, „was heißt X“)
+        """
         normalized = (text or "").strip()
+        if not normalized:
+            return ""
         if re.match(
             r"(?i)^(kennst|kenne|hast|habe|bist|bin|kannst|kann|weißt|weisst|kennt)\s+du\b",
             normalized,
         ):
             return ""
-        # Orts-/Wetter-Kontext: keine Eigennamen-Rückfragen (Mühlhausen, Thüringen, …)
-        if re.search(r"(?i)\b(wetter|weather|temperatur|vorhersage|plz|\d{5})\b", normalized):
-            return ""
-        if re.search(r"(?i)\b(in|für|fuer|bei|nach)\s+[A-ZÄÖÜ]", normalized):
-            return ""
 
-        worte = re.findall(r"[A-Za-zÄÖÜäöüß]+", normalized)
-        kandidaten = [
-            w for w in worte
-            if len(w) > 3
-            and w[0].isupper()
-            and w.lower() not in _KNOWN_SYSTEM_TERMS
-            and w.lower() not in _TERM_QUESTION_STOPWORDS
-            and w.lower() not in ["isaac", "steffen", "python", "claude",
-                                   "gemini", "openai", "google", "linux",
-                                   "windows", "docker", "github"]
-        ]
-        # Bekannte Begriffe aus Regelwerk ausfiltern
-        bekannt = set()
-        for r in self._regeln.values():
-            bekannt.update(r.text.lower().split())
-        unbekannte = [w for w in kandidaten if w.lower() not in bekannt]
-        return unbekannte[0] if unbekannte else ""
+        # Explizit: „was bedeutet/heißt FOO“
+        m = re.search(
+            r"(?i)\bwas\s+(?:bedeutet|heißt|heisst|meinst\s+du\s+mit)\s+['\"]?([A-Za-zÄÖÜäöüß0-9_\-]{2,40})",
+            normalized,
+        )
+        if m:
+            term = m.group(1).strip("'\"")
+            if term.lower() not in _KNOWN_SYSTEM_TERMS and term.lower() not in _TERM_QUESTION_STOPWORDS:
+                return term
+
+        # Nur echte Akronyme: mind. 3 Großbuchstaben, keine gemischte Capitalization
+        acros = re.findall(r"\b[A-ZÄÖÜ]{3,12}\b", normalized)
+        for a in acros:
+            low = a.lower()
+            if low in _KNOWN_SYSTEM_TERMS or low in _TERM_QUESTION_STOPWORDS:
+                continue
+            if low in {"http", "https", "json", "html", "css", "api", "url", "usb", "ssd", "cpu", "gpu", "ram"}:
+                continue
+            # skip if whole sentence is shouty (all caps)
+            letters = re.findall(r"[A-Za-zÄÖÜäöüß]", normalized)
+            if letters and sum(1 for c in letters if c.isupper()) / max(1, len(letters)) > 0.7:
+                return ""
+            return a
+
+        return ""
+
+    def dismiss_open_term_questions(self) -> int:
+        """Schließt alle offenen „Was meinst du mit 'X'?“-Fragen (Themenwechsel)."""
+        changed = 0
+        for frage in self._fragen:
+            if frage.beantwortet:
+                continue
+            if self._extract_term_from_frage(frage) or (
+                "Was meinst du genau mit" in (frage.text or "")
+            ):
+                frage.beantwortet = True
+                frage.antwort = "Themenwechsel — Rückfrage entfällt."
+                changed += 1
+        if changed:
+            self._save()
+        return changed
 
     def dismiss_term_questions_matching(self, terms=None) -> int:
-        """Schließt offene Begriffs-Rückfragen (z. B. nach erfolgreichem Wetter-Search)."""
+        """Schließt offene Begriffs-Rückfragen zu genannten/bekannten Terms."""
         wanted = {(t or "").strip().lower() for t in (terms or []) if (t or "").strip()}
-        always = {
-            "wetter", "weather", "temperatur", "vorhersage",
-            "mühlhausen", "muehlhausen", "thüringen", "thueringen",
-            "berlin", "münchen", "muenchen",
-        }
         changed = 0
         for frage in self._fragen:
             if frage.beantwortet:
                 continue
             term = self._extract_term_from_frage(frage)
             if not term:
+                if "Was meinst du genau mit" in (frage.text or "") and not wanted:
+                    frage.beantwortet = True
+                    frage.antwort = "Begriffs-Rückfrage entfällt."
+                    changed += 1
                 continue
             tl = term.lower()
-            if tl in wanted or tl in always or tl in _KNOWN_SYSTEM_TERMS:
+            if (not wanted) or tl in wanted or tl in _KNOWN_SYSTEM_TERMS:
                 frage.beantwortet = True
-                frage.antwort = "Ort/Wetter-Kontext — Rückfrage entfällt."
+                frage.antwort = "Begriffs-Rückfrage entfällt."
                 changed += 1
         if changed:
             self._save()

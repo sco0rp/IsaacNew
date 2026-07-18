@@ -351,7 +351,14 @@ class IsaacKernel:
                 )
                 return self._post_process(user_input, result, emp, 8.0 if ok else 4.0, t0)
 
-        if interaction_class in {
+        # Neues Thema / neue Frage: offene Regelwerk-Rückfrage verwerfen, nicht hijacken
+        if self._looks_like_new_user_topic(user_input, interaction_class):
+            self._awaiting_frage_id = None
+            try:
+                self.regelwerk.dismiss_open_term_questions()
+            except Exception:
+                pass
+        elif interaction_class in {
             InteractionClass.STATUS_QUERY,
             InteractionClass.TOOL_REQUEST,
         }:
@@ -986,28 +993,25 @@ class IsaacKernel:
             bg_erkenntnisse = self._background.get_erkenntnisse()
             erkenntnisse.extend(bg_erkenntnisse)
 
-        # Offene Regelwerk-Frage stellen (max 1 pro Antwort)
-        # Wetter/Search-Live-Daten: keine Begriffs-Spam-Fragen anhängen
-        skip_pending_frage = False
-        try:
-            from search import looks_like_weather_query, looks_like_place_only_refinement
-            if (
-                looks_like_weather_query(user_input)
-                or looks_like_place_only_refinement(user_input)
-                or "Open-Meteo" in (antwort or "")
-                or "wttr.in" in (antwort or "")
-                or "Live-Web-Abruf" in (antwort or "")
-            ):
-                skip_pending_frage = True
-                try:
-                    self.regelwerk.dismiss_term_questions_matching()
-                except Exception:
-                    pass
-                self._last_weather_active = True
-        except Exception:
-            pass
+        # Offene Regelwerk-Frage: nur sparsam anhängen — nie bei gelungenen Antworten
+        # und nie Begriffs-Spam, der Themenwechsel stört.
+        main = (antwort or "").strip()
+        substantive_answer = len(main) >= 30 and not main.startswith("[RELAY]")
+        success_answer = score >= 5.5 and substantive_answer
+        # Bei guter Antwort: offene Begriffsfragen verwerfen
+        if success_answer:
+            try:
+                self.regelwerk.dismiss_open_term_questions()
+            except Exception:
+                pass
 
-        frage = None if skip_pending_frage else self.regelwerk.get_pending_frage()
+        frage = None
+        if not success_answer:
+            frage = self.regelwerk.get_pending_frage()
+            # Begriffs-Fragen nur bei wirklich niedrigem Score / Vagheit
+            if frage and "Was meinst du genau mit" in (frage or ""):
+                if score >= 4.0:
+                    frage = None
 
         # Empathie-Interface-Fehler
         if emp.interface_fehler:
@@ -1029,16 +1033,11 @@ class IsaacKernel:
         # Frage anhängen (nicht bei jeder Antwort wiederholen)
         if frage:
             top = self.regelwerk.get_top_pending_frage()
-            main = (antwort or "").strip()
-            substantive_answer = len(main) >= 30 and not main.startswith("[RELAY]")
             if top and substantive_answer and self._awaiting_frage_id != top.id:
                 self._awaiting_frage_id = top.id
                 antwort += f"\n\n---\n{frage}"
         else:
-            if skip_pending_frage:
-                self._awaiting_frage_id = None
-            elif not frage:
-                self._awaiting_frage_id = None
+            self._awaiting_frage_id = None
 
         AuditLog.isaac_output(antwort)
         return antwort
@@ -1185,9 +1184,43 @@ class IsaacKernel:
             value = f"{frage.text[:120]} → {text[:380]}"
         self.memory.set_fact(key, value, source="Steffen", confidence=1.0)
 
+    def _looks_like_new_user_topic(self, user_input: str, interaction_class: str) -> bool:
+        """True wenn Steffen ein neues Thema / eine neue Frage startet (nicht Meta-Antwort)."""
+        if interaction_class in {
+            InteractionClass.SOCIAL_GREETING,
+            InteractionClass.SOCIAL_ACKNOWLEDGMENT,
+            InteractionClass.STATUS_QUERY,
+            InteractionClass.TOOL_REQUEST,
+        }:
+            return True
+        text = (user_input or "").strip()
+        if not text:
+            return False
+        low = text.lower()
+        if low.startswith("antwort:"):
+            return False
+        if "?" in text:
+            return True
+        normalized = normalize_low_complexity(text)
+        if any(
+            normalized.startswith(prefix)
+            for prefix in (
+                "was ", "wie ", "warum ", "weshalb ", "wer ", "wann ", "wo ",
+                "kannst ", "kann ", "magst ", "möchtest ", "moechtest ",
+                "zeig ", "zeige ", "such ", "suche ", "recherch", "erkl",
+                "mach ", "bitte ", "ich will ", "ich möchte ", "ich moechte ",
+                "ich brauche ", "lass uns ", "neues thema", "anderes thema",
+            )
+        ):
+            return True
+        return False
+
     def _input_looks_like_frage_antwort(
         self, user_input: str, interaction_class: str
     ) -> bool:
+        """Nur echte Antworten auf offene Regelwerk-Fragen — kein Themenwechsel."""
+        if self._looks_like_new_user_topic(user_input, interaction_class):
+            return False
         if interaction_class in {
             InteractionClass.SOCIAL_GREETING,
             InteractionClass.SOCIAL_ACKNOWLEDGMENT,
@@ -1201,12 +1234,8 @@ class IsaacKernel:
         if text.lower().startswith("antwort:"):
             return True
         normalized = normalize_low_complexity(text)
-        if "?" in text and any(
-            normalized.startswith(prefix)
-            for prefix in ("was ", "wie ", "warum ", "wer ", "wann ", "wo ", "kannst ")
-        ):
-            return False
-        return len(normalized.split()) >= 2
+        # Kurze Bestätigung / Definition ohne Fragezeichen kann Antwort sein
+        return len(normalized.split()) >= 2 and "?" not in text
 
     # ── SUDO ──────────────────────────────────────────────────────────────────
     def _handle_sudo_open(self, text: str) -> str:

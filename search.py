@@ -91,6 +91,19 @@ _WEATHER_MARKERS = (
 _WEATHER_SKIP_MARKERS = (
     "literatur", "motiv", "metapher", "als sprach", "konzept", "architektur",
 )
+_TIME_WORDS = (
+    "morgen", "heute", "übermorgen", "uebermorgen", "weekend", "woche",
+    "nachmittag", "vormittag", "abend", "nacht",
+)
+_REGION_WORDS = {
+    "thüringen", "thueringen", "bayern", "sachsen", "hessen", "nrw",
+    "deutschland", "germany", "baden", "württemberg", "wuerttemberg",
+    "brandenburg", "niedersachsen", "rheinland", "pfalz",
+}
+_FILLER_WORDS = {
+    "ich", "wollte", "für", "fuer", "bitte", "das", "der", "die", "den",
+    "in", "bei", "nach", "und", "oder", "mal", "noch", "ein", "eine",
+}
 
 
 def looks_like_weather_query(text: str) -> bool:
@@ -105,8 +118,44 @@ def looks_like_weather_query(text: str) -> bool:
     return True
 
 
+def looks_like_place_only_refinement(text: str) -> bool:
+    """Ort/PLZ-Korrektur ohne explizites 'Wetter' (Themenfortführung)."""
+    raw = (text or "").strip()
+    if not raw or looks_like_weather_query(raw):
+        return False
+    tl = raw.lower()
+    if any(m in tl for m in _WEATHER_SKIP_MARKERS):
+        return False
+    if re.search(r"\b\d{5}\b", raw):
+        return True
+    # „Ich wollte für Mühlhausen Thüringen“ / „für 99974 Mühlhausen“
+    if re.search(
+        r"(?i)\b(für|fuer|in|bei|nach)\s+[\wÄÖÜäöüß/\-\s]{2,40}$",
+        raw,
+    ) and not re.search(r"(?i)\b(erkl[aä]r|warum|wie funktioniert)\b", tl):
+        # must look like a place (capitalized token or multi-word place)
+        if re.search(r"[A-ZÄÖÜ][a-zäöüß]{2,}", raw):
+            return True
+    return False
+
+
+def _clean_location_fragment(loc: str) -> str:
+    loc = (loc or "").strip(" .,!?:;")
+    loc = re.split(
+        r"\b(" + "|".join(_TIME_WORDS) + r")\b",
+        loc,
+        maxsplit=1,
+        flags=re.I,
+    )[0].strip(" .,!?")
+    # drop leading fillers
+    parts = loc.split()
+    while parts and parts[0].lower().strip(",.") in _FILLER_WORDS:
+        parts.pop(0)
+    return " ".join(parts).strip(" .,!?")
+
+
 def extract_weather_location(text: str, default: str = "") -> str:
-    """Ort aus Wetterfrage; default wenn keiner genannt (z. B. Berlin)."""
+    """Ort aus Wetterfrage; default nur wenn kein Ort erkennbar."""
     raw = (text or "").strip()
     for prefix in (
         "suche:", "search:", "recherche:", "recherchiere:",
@@ -115,25 +164,122 @@ def extract_weather_location(text: str, default: str = "") -> str:
         if raw.lower().startswith(prefix):
             raw = raw.split(":", 1)[1].strip()
             break
+    # trailing punctuation (question marks break $ anchors)
+    raw = re.sub(r"[?!.,;:]+$", "", raw).strip()
+
+    # PLZ + optionaler Ortsname: 99974 Mühlhausen Thüringen
+    m_plz = re.search(
+        r"\b(\d{5})\b(?:\s+([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß/\-\s]{1,40}))?",
+        raw,
+    )
+    if m_plz:
+        plz = m_plz.group(1)
+        rest = _clean_location_fragment(m_plz.group(2) or "")
+        if rest:
+            # keep city; region words ok for preference later
+            return f"{plz} {rest}".strip()
+        return plz
+
     patterns = (
-        r"(?:wetter|weather|temperatur|vorhersage)\s+(?:in|für|fuer|bei|near)\s+([A-Za-zÄÖÜäöüß\-\s]{2,40})",
-        r"(?:in|für|fuer|bei)\s+([A-Za-zÄÖÜäöüß\-]{2,40})\s+(?:wetter|weather|morgen|heute)",
+        # wetter … in|für Ort (morgen darf dazwischen stehen)
+        r"(?:wetter|weather|temperatur|vorhersage)\b.*?\b(?:in|für|fuer|bei|near)\s+([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß/\-\s]{1,40})\s*$",
+        r"(?:wetter|weather|temperatur|vorhersage)\s+(?:in|für|fuer|bei|near)\s+([A-Za-zÄÖÜäöüß\-\s/]{2,40})",
+        # in Ort … wetter|morgen
+        r"(?:in|für|fuer|bei)\s+([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß/\-\s]{1,40}?)\s+(?:wetter|weather|morgen|heute)\b",
+        # … in|für Ort am Ende
+        r"(?:in|für|fuer|bei|nach)\s+([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß/\-\s]{1,40})\s*$",
         r"(?:zeige|zeig|hol)\s+(?:das\s+)?wetter\s+(?:in|für|fuer|bei)\s+(.+)$",
+        # „Ich wollte für Ort“
+        r"(?:wollte|will|möchte|moechte)\s+(?:es\s+)?(?:für|fuer|in|bei)\s+(.+)$",
     )
     for pattern in patterns:
         m = re.search(pattern, raw, re.I)
         if m:
-            loc = m.group(1).strip(" .,!?:")
-            # cut trailing time words
-            loc = re.split(
-                r"\b(morgen|heute|übermorgen|uebermorgen|weekend|woche)\b",
-                loc,
-                maxsplit=1,
-                flags=re.I,
-            )[0].strip(" .,!?")
-            if loc and loc.lower() not in _WEATHER_SKIP_MARKERS:
+            loc = _clean_location_fragment(m.group(1))
+            if loc and loc.lower() not in _WEATHER_SKIP_MARKERS and len(loc) >= 2:
                 return loc
-    return (default or os.getenv("ISAAC_DEFAULT_LOCATION") or "Berlin").strip()
+
+    if default:
+        return default.strip()
+    # Only silent default when truly no place signal
+    return (os.getenv("ISAAC_DEFAULT_LOCATION") or "Berlin").strip()
+
+
+def location_was_explicit(text: str) -> bool:
+    """True if user text contains a place/PLZ (not pure 'Wetter morgen?')."""
+    raw = text or ""
+    if re.search(r"\b\d{5}\b", raw):
+        return True
+    if re.search(r"(?i)\b(?:in|für|fuer|bei|nach)\s+[A-ZÄÖÜa-zäöüß]", raw):
+        return True
+    loc = extract_weather_location(raw, default="__none__")
+    return bool(loc and loc != "__none__" and loc.lower() not in {
+        (os.getenv("ISAAC_DEFAULT_LOCATION") or "berlin").lower()
+    }) or bool(re.search(r"(?i)\b(in|für|fuer|bei)\s+\S+", raw))
+
+
+def _ascii_fold(s: str) -> str:
+    table = str.maketrans({
+        "ä": "a", "ö": "o", "ü": "u", "ß": "ss",
+        "Ä": "A", "Ö": "O", "Ü": "U",
+    })
+    return (s or "").translate(table)
+
+
+def _geocode_query_candidates(location: str) -> list[str]:
+    loc = (location or "").strip()
+    if not loc:
+        return []
+    cands: list[str] = []
+    plz_m = re.match(r"^(\d{5})\s+(.+)$", loc)
+    if plz_m:
+        city = plz_m.group(2).strip()
+        cands.extend([city, f"{city}, DE", _ascii_fold(city)])
+        # first token of city (Mühlhausen from "Mühlhausen Thüringen")
+        first = city.split()[0] if city.split() else city
+        cands.append(first)
+        cands.append(_ascii_fold(first))
+    else:
+        cands.append(loc)
+        cands.append(f"{loc}, DE")
+        # without region words
+        parts = [p for p in re.split(r"[\s,/]+", loc) if p]
+        core = [p for p in parts if p.lower() not in _REGION_WORDS]
+        if core:
+            cands.append(" ".join(core))
+            cands.append(core[0])
+            cands.append(_ascii_fold(core[0]))
+        cands.append(_ascii_fold(loc))
+        if "/" in loc:
+            cands.append(loc)  # Mühlhausen/Thüringen style
+    # unique preserve order
+    seen = set()
+    out = []
+    for c in cands:
+        c = (c or "").strip(" ,")
+        key = c.lower()
+        if c and key not in seen:
+            seen.add(key)
+            out.append(c)
+    return out
+
+
+def _pick_geocode_result(results: list, location: str) -> Optional[dict]:
+    if not results:
+        return None
+    loc_l = (location or "").lower()
+    # prefer Thüringen if mentioned
+    if "thür" in loc_l or "thuer" in loc_l or "99974" in (location or ""):
+        for r in results:
+            admin = (r.get("admin1") or "").lower()
+            name = (r.get("name") or "").lower()
+            if "thür" in admin or "thür" in name or "thuer" in admin:
+                return r
+    # prefer DE
+    for r in results:
+        if (r.get("country_code") or "").upper() == "DE":
+            return r
+    return results[0]
 
 
 def _wmo_label(code: int) -> str:
@@ -336,79 +482,141 @@ class MultiSearch:
         return result
 
     # ── Wetter (kostenlose APIs, kein Key) ─────────────────────────────────────
+    async def _geocode_place(self, location: str) -> Optional[dict]:
+        session = await self._sess()
+        prefer_region = None
+        loc_l = (location or "").lower()
+        if "thür" in loc_l or "thuer" in loc_l or "99974" in (location or ""):
+            prefer_region = "thür"
+        for cand in _geocode_query_candidates(location):
+            try:
+                geo_url = (
+                    "https://geocoding-api.open-meteo.com/v1/search"
+                    f"?name={quote_plus(cand)}&count=5&language=de&format=json"
+                )
+                async with session.get(
+                    geo_url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=12)
+                ) as r:
+                    if r.status != 200:
+                        continue
+                    geo = await r.json()
+                    results = geo.get("results") or []
+                    if not results:
+                        continue
+                    if prefer_region:
+                        for res in results:
+                            blob = f"{res.get('name','')} {res.get('admin1','')}".lower()
+                            if prefer_region in blob:
+                                return res
+                    picked = _pick_geocode_result(results, location)
+                    if picked:
+                        return picked
+            except Exception as e:
+                log.debug("geocode %s: %s", cand, e)
+        return None
+
     async def _weather_forecast(self, query: str) -> tuple[list[SearchHit], str]:
         location = extract_weather_location(query)
+        explicit = bool(
+            re.search(r"\b\d{5}\b", query or "")
+            or re.search(r"(?i)\b(?:in|für|fuer|bei|nach)\s+\S+", query or "")
+        )
         session = await self._sess()
         hits: list[SearchHit] = []
         lines: list[str] = []
 
-        # 1) Geocoding + Open-Meteo daily
+        place = await self._geocode_place(location)
+        if not place:
+            if explicit:
+                msg = (
+                    f"Konnte den Ort „{location}“ nicht geokodieren. "
+                    "Bitte Stadtname klar nennen (z. B. Mühlhausen Thüringen) "
+                    "— keine Ersatz-Stadt verwendet."
+                )
+                hits.append(SearchHit(
+                    titel="Geocoding fehlgeschlagen",
+                    snippet=msg,
+                    url="",
+                    quelle="weather_api",
+                    score=8.0,
+                ))
+                return hits, msg
+            # implicit default location path continues with raw name
+            place = {
+                "name": location,
+                "latitude": None,
+                "longitude": None,
+                "country_code": "DE",
+                "timezone": "Europe/Berlin",
+                "admin1": "",
+            }
+
+        # 1) Open-Meteo daily (when coords known)
         try:
-            geo_url = (
-                "https://geocoding-api.open-meteo.com/v1/search"
-                f"?name={quote_plus(location)}&count=1&language=de&format=json"
-            )
-            async with session.get(geo_url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=12)) as r:
-                if r.status == 200:
-                    geo = await r.json()
-                    results = geo.get("results") or []
-                    if results:
-                        place = results[0]
-                        lat = place.get("latitude")
-                        lon = place.get("longitude")
-                        name = place.get("name") or location
-                        country = place.get("country_code") or ""
-                        tz = place.get("timezone") or "Europe/Berlin"
-                        fc_url = (
-                            "https://api.open-meteo.com/v1/forecast"
-                            f"?latitude={lat}&longitude={lon}"
-                            "&daily=temperature_2m_max,temperature_2m_min,"
-                            "precipitation_sum,weathercode,windspeed_10m_max"
-                            f"&timezone={quote_plus(tz)}&forecast_days=3"
-                        )
-                        async with session.get(
-                            fc_url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=12)
-                        ) as fr:
-                            if fr.status == 200:
-                                data = await fr.json()
-                                daily = data.get("daily") or {}
-                                times = daily.get("time") or []
-                                tmax = daily.get("temperature_2m_max") or []
-                                tmin = daily.get("temperature_2m_min") or []
-                                precip = daily.get("precipitation_sum") or []
-                                codes = daily.get("weathercode") or []
-                                wind = daily.get("windspeed_10m_max") or []
-                                day_lines = []
-                                for i, day in enumerate(times[:3]):
-                                    label = _wmo_label(codes[i] if i < len(codes) else -1)
-                                    t_hi = tmax[i] if i < len(tmax) else "?"
-                                    t_lo = tmin[i] if i < len(tmin) else "?"
-                                    pr = precip[i] if i < len(precip) else "?"
-                                    wi = wind[i] if i < len(wind) else "?"
-                                    day_lines.append(
-                                        f"{day}: {label}, {t_lo}–{t_hi}°C, "
-                                        f"Niederschlag {pr} mm, Wind max {wi} km/h"
-                                    )
-                                if day_lines:
-                                    abstract = (
-                                        f"Wettervorhersage für {name}"
-                                        f"{', ' + country if country else ''} "
-                                        f"(Open-Meteo, live):\n" + "\n".join(day_lines)
-                                    )
-                                    lines.append(abstract)
-                                    hits.append(SearchHit(
-                                        titel=f"Open-Meteo Vorhersage: {name}",
-                                        snippet="\n".join(day_lines),
-                                        url=fc_url,
-                                        quelle="open-meteo",
-                                        score=10.0,
-                                    ))
+            lat = place.get("latitude")
+            lon = place.get("longitude")
+            name = place.get("name") or location
+            admin = place.get("admin1") or ""
+            country = place.get("country_code") or ""
+            tz = place.get("timezone") or "Europe/Berlin"
+            if lat is not None and lon is not None:
+                fc_url = (
+                    "https://api.open-meteo.com/v1/forecast"
+                    f"?latitude={lat}&longitude={lon}"
+                    "&daily=temperature_2m_max,temperature_2m_min,"
+                    "precipitation_sum,weathercode,windspeed_10m_max"
+                    f"&timezone={quote_plus(tz)}&forecast_days=3"
+                )
+                async with session.get(
+                    fc_url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=12)
+                ) as fr:
+                    if fr.status == 200:
+                        data = await fr.json()
+                        daily = data.get("daily") or {}
+                        times = daily.get("time") or []
+                        tmax = daily.get("temperature_2m_max") or []
+                        tmin = daily.get("temperature_2m_min") or []
+                        precip = daily.get("precipitation_sum") or []
+                        codes = daily.get("weathercode") or []
+                        wind = daily.get("windspeed_10m_max") or []
+                        day_lines = []
+                        for i, day in enumerate(times[:3]):
+                            label = _wmo_label(codes[i] if i < len(codes) else -1)
+                            t_hi = tmax[i] if i < len(tmax) else "?"
+                            t_lo = tmin[i] if i < len(tmin) else "?"
+                            pr = precip[i] if i < len(precip) else "?"
+                            wi = wind[i] if i < len(wind) else "?"
+                            day_lines.append(
+                                f"{day}: {label}, {t_lo}–{t_hi}°C, "
+                                f"Niederschlag {pr} mm, Wind max {wi} km/h"
+                            )
+                        if day_lines:
+                            place_label = name
+                            if admin:
+                                place_label = f"{name} ({admin})"
+                            abstract = (
+                                f"Wettervorhersage für {place_label}"
+                                f"{', ' + country if country else ''} "
+                                f"(Open-Meteo, live):\n" + "\n".join(day_lines)
+                            )
+                            lines.append(abstract)
+                            hits.append(SearchHit(
+                                titel=f"Open-Meteo Vorhersage: {place_label}",
+                                snippet="\n".join(day_lines),
+                                url=fc_url,
+                                quelle="open-meteo",
+                                score=10.0,
+                            ))
         except Exception as e:
             log.debug("open-meteo: %s", e)
 
-        # 2) wttr.in Kurzformat (aktuell + 2 Tage)
+        # 2) wttr.in — use resolved place name (better than raw PLZ)
+        wttr_q = place.get("name") or location
+        # strip PLZ-only for wttr
+        if re.fullmatch(r"\d{5}", (wttr_q or "").strip()):
+            wttr_q = location
         try:
-            wttr_url = f"https://wttr.in/{quote_plus(location)}?format=j1&lang=de"
+            wttr_url = f"https://wttr.in/{quote_plus(wttr_q)}?format=j1&lang=de"
             async with session.get(
                 wttr_url,
                 headers={**HEADERS, "Accept": "application/json"},
@@ -418,7 +626,7 @@ class MultiSearch:
                     data = await r.json()
                     cur = (data.get("current_condition") or [{}])[0]
                     area = ((data.get("nearest_area") or [{}])[0].get("areaName") or [{}])
-                    area_name = (area[0].get("value") if area else location) or location
+                    area_name = (area[0].get("value") if area else wttr_q) or wttr_q
                     temp = cur.get("temp_C", "?")
                     desc = ""
                     if cur.get("lang_de"):
@@ -445,7 +653,7 @@ class MultiSearch:
                     hits.append(SearchHit(
                         titel=f"wttr.in: {area_name}",
                         snippet=snippet,
-                        url=f"https://wttr.in/{quote_plus(location)}",
+                        url=f"https://wttr.in/{quote_plus(wttr_q)}",
                         quelle="wttr.in",
                         score=9.5,
                     ))

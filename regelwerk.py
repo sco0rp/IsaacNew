@@ -53,6 +53,11 @@ _KNOWN_SYSTEM_TERMS = {
     "groq", "ollama", "isaac", "steffen", "kernel", "executor",
     "relay", "memory", "browser", "python", "linux", "android", "termux",
     "hallo", "danke", "bitte", "morgen", "abend",
+    # Wetter / Geographie — keine „Was meinst du mit X?“-Spam
+    "wetter", "weather", "temperatur", "vorhersage", "forecast",
+    "regen", "schnee", "gewitter", "unwetter",
+    "thüringen", "thueringen", "bayern", "sachsen", "hessen",
+    "deutschland", "germany", "berlin", "münchen", "muenchen", "hamburg",
 }
 
 _TERM_QUESTION_STOPWORDS = frozenset({
@@ -64,6 +69,7 @@ _TERM_QUESTION_STOPWORDS = frozenset({
     "und", "oder", "nicht", "noch", "auch", "schon", "mal", "nur", "sehr",
     "du", "ich", "wir", "sie", "es", "der", "die", "das", "ein", "eine",
     "dein", "deine", "mein", "meine", "alle", "alles", "jede", "jeder",
+    "wollte", "will", "möchte", "moechte", "für", "fuer", "heute", "übermorgen",
 })
 
 
@@ -300,8 +306,21 @@ class Regelwerk:
             if frage:
                 neue_fragen.append(frage)
 
-        # Lücke 3: Unbekannter Begriff
-        unbekannt = self._erkenne_unbekannte_begriffe(steffen_input)
+        # Lücke 3: Unbekannter Begriff — nicht bei Wetter/Ort/Suche
+        skip_term_q = False
+        try:
+            from search import looks_like_weather_query, looks_like_place_only_refinement
+            if looks_like_weather_query(steffen_input) or looks_like_place_only_refinement(steffen_input):
+                skip_term_q = True
+        except Exception:
+            pass
+        if re.search(r"\b\d{5}\b", steffen_input or ""):
+            skip_term_q = True
+        tl_in = (steffen_input or "").lower()
+        if any(k in tl_in for k in ("suche:", "search:", "recherche:", "recherchiere:")):
+            skip_term_q = True
+
+        unbekannt = "" if skip_term_q else self._erkenne_unbekannte_begriffe(steffen_input)
         if unbekannt and self._term_already_asked(unbekannt):
             unbekannt = ""
         if unbekannt:
@@ -354,6 +373,11 @@ class Regelwerk:
             normalized,
         ):
             return ""
+        # Orts-/Wetter-Kontext: keine Eigennamen-Rückfragen (Mühlhausen, Thüringen, …)
+        if re.search(r"(?i)\b(wetter|weather|temperatur|vorhersage|plz|\d{5})\b", normalized):
+            return ""
+        if re.search(r"(?i)\b(in|für|fuer|bei|nach)\s+[A-ZÄÖÜ]", normalized):
+            return ""
 
         worte = re.findall(r"[A-Za-zÄÖÜäöüß]+", normalized)
         kandidaten = [
@@ -372,6 +396,30 @@ class Regelwerk:
             bekannt.update(r.text.lower().split())
         unbekannte = [w for w in kandidaten if w.lower() not in bekannt]
         return unbekannte[0] if unbekannte else ""
+
+    def dismiss_term_questions_matching(self, terms=None) -> int:
+        """Schließt offene Begriffs-Rückfragen (z. B. nach erfolgreichem Wetter-Search)."""
+        wanted = {(t or "").strip().lower() for t in (terms or []) if (t or "").strip()}
+        always = {
+            "wetter", "weather", "temperatur", "vorhersage",
+            "mühlhausen", "muehlhausen", "thüringen", "thueringen",
+            "berlin", "münchen", "muenchen",
+        }
+        changed = 0
+        for frage in self._fragen:
+            if frage.beantwortet:
+                continue
+            term = self._extract_term_from_frage(frage)
+            if not term:
+                continue
+            tl = term.lower()
+            if tl in wanted or tl in always or tl in _KNOWN_SYSTEM_TERMS:
+                frage.beantwortet = True
+                frage.antwort = "Ort/Wetter-Kontext — Rückfrage entfällt."
+                changed += 1
+        if changed:
+            self._save()
+        return changed
 
     def _neue_frage(self, text: str, kontext: str,
                     prioritaet: float) -> Optional[Frage]:

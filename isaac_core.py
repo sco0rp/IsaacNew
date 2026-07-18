@@ -227,6 +227,9 @@ class IsaacKernel:
         self.values     = get_values()
         self.neural     = get_neural_cortex()
         self.learning   = get_learning_engine()
+        # Letztes Wetter-Thema für Ort-Korrekturen („Ich wollte für 99974 …“)
+        self._last_weather_active: bool = False
+        self._last_weather_query: str = ""
         self._background = None   # lazy start in main()
 
         set_kernel(self)
@@ -262,6 +265,29 @@ class IsaacKernel:
         timing["classification_ms"] = round((time.perf_counter() - t_start) * 1000, 2)
 
         t0 = time.monotonic()
+
+        # Ort-Korrektur nach Wetter: „Ich wollte für 99974 Mühlhausen …“
+        try:
+            from search import (
+                looks_like_place_only_refinement,
+                looks_like_weather_query,
+                extract_weather_location,
+            )
+            if (
+                getattr(self, "_last_weather_active", False)
+                and looks_like_place_only_refinement(user_input)
+            ):
+                loc = extract_weather_location(user_input)
+                user_input = f"Wetter morgen in {loc}"
+                classification = classify_interaction_result(user_input)
+                interaction_class = classification.interaction_class
+                self._awaiting_frage_id = None
+                log.info("Wetter-Themenfortführung → %s", user_input[:80])
+            elif looks_like_weather_query(user_input):
+                self._last_weather_active = True
+                self._last_weather_query = user_input
+        except Exception as exc:
+            log.debug("weather continuation skipped: %s", exc)
 
         if is_owner_equivalent_mode():
             from decision_trace import DecisionTrace, TracePhase, audit_routing_trace
@@ -961,7 +987,27 @@ class IsaacKernel:
             erkenntnisse.extend(bg_erkenntnisse)
 
         # Offene Regelwerk-Frage stellen (max 1 pro Antwort)
-        frage = self.regelwerk.get_pending_frage()
+        # Wetter/Search-Live-Daten: keine Begriffs-Spam-Fragen anhängen
+        skip_pending_frage = False
+        try:
+            from search import looks_like_weather_query, looks_like_place_only_refinement
+            if (
+                looks_like_weather_query(user_input)
+                or looks_like_place_only_refinement(user_input)
+                or "Open-Meteo" in (antwort or "")
+                or "wttr.in" in (antwort or "")
+                or "Live-Web-Abruf" in (antwort or "")
+            ):
+                skip_pending_frage = True
+                try:
+                    self.regelwerk.dismiss_term_questions_matching()
+                except Exception:
+                    pass
+                self._last_weather_active = True
+        except Exception:
+            pass
+
+        frage = None if skip_pending_frage else self.regelwerk.get_pending_frage()
 
         # Empathie-Interface-Fehler
         if emp.interface_fehler:
@@ -989,7 +1035,10 @@ class IsaacKernel:
                 self._awaiting_frage_id = top.id
                 antwort += f"\n\n---\n{frage}"
         else:
-            self._awaiting_frage_id = None
+            if skip_pending_frage:
+                self._awaiting_frage_id = None
+            elif not frage:
+                self._awaiting_frage_id = None
 
         AuditLog.isaac_output(antwort)
         return antwort

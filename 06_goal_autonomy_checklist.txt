@@ -40,4 +40,4 @@ S3 INQUIRY / RESEARCH / LEARN (an goal_id)
 [x] record_goal_learning_from_task → facts source=goal:{id}
 [x] Failure → recovery subgoal (cap: max 1 active recovery; kein Recovery-von-Recovery)
 [x] Subgoal-Verify: high score / success_criteria → subgoal done; optional goal done
-[ ] Digest-Kanal gebündelt (Slice 4)
+[x] Digest-Kanal gebündelt (Slice 4) — goal_digest.py + Background-Tick

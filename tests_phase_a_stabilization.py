@@ -3788,6 +3788,56 @@ class TestPhase4Connect(unittest.TestCase):
             self.assertIn("Isaac Kernel härten", formatted)
             self.assertIn("open_q:", formatted)
 
+    def test_goal_digest_emits_once_per_fingerprint(self):
+        """Slice 4: digest emits on change, skips identical fingerprint."""
+        import tempfile
+        from goal_store import reset_goal_store_for_tests
+        from goal_inquiry import reset_inquiry_store_for_tests, get_inquiry_store
+        from goal_digest import maybe_emit_digest, compute_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = reset_goal_store_for_tests(Path(tmp) / "g.json")
+            inq = reset_inquiry_store_for_tests(Path(tmp) / "i.json")
+            path = Path(tmp) / "digest.json"
+            goal = store.add_owner_goal("Digest Ziel", priority=0.8)
+            store.add_subgoal(goal.id, "Arbeit", origin="planner")
+            get_inquiry_store().add(goal.id, "Welche Priorität?")
+
+            fp1, n_g, n_q = compute_fingerprint(goal_store=store, inquiry_store=inq)
+            self.assertGreaterEqual(n_g, 1)
+            self.assertGreaterEqual(n_q, 1)
+            self.assertTrue(fp1.startswith("g="))
+
+            with patch.dict(os.environ, {"ISAAC_GOAL_DIGEST_MIN_INTERVAL_S": "0"}):
+                r1 = maybe_emit_digest(
+                    path=path,
+                    goal_store=store,
+                    inquiry_store=inq,
+                    now=1000.0,
+                )
+                self.assertTrue(r1.get("emitted"))
+                self.assertIn("[Goal-Digest]", r1.get("text") or "")
+                self.assertIn("Digest Ziel", r1.get("text") or "")
+
+                r2 = maybe_emit_digest(
+                    path=path,
+                    goal_store=store,
+                    inquiry_store=inq,
+                    now=1001.0,
+                )
+                self.assertFalse(r2.get("emitted"))
+                self.assertEqual(r2.get("reason"), "unchanged")
+
+                # Change inquiry → new fingerprint → emit again
+                get_inquiry_store().add(goal.id, "Zweite Frage?")
+                r3 = maybe_emit_digest(
+                    path=path,
+                    goal_store=store,
+                    inquiry_store=inq,
+                    now=1002.0,
+                )
+                self.assertTrue(r3.get("emitted"))
+
     def test_e2_trace_phases_include_evaluation_and_learning(self):
         """Evolution 2.0: DecisionTrace deckt Evaluation und Learning ab."""
         self.assertEqual(TracePhase.EVALUATION.value, "evaluation")

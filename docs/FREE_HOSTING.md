@@ -10,8 +10,11 @@ Isaac ist **lokal-first**. Diese Anleitung beschreibt **kostenlose** Online-Opti
 | **Google AI Studio** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Free (Quota) | `ACTIVE_PROVIDER=gemini` + `GOOGLE_API_KEY` |
 | **OpenRouter free models** | [openrouter.ai](https://openrouter.ai) | free-Modelle | `ACTIVE_PROVIDER=openrouter` + `OPENROUTER_API_KEY` |
 | **Ollama** | lokal | 0 € | nur auf eigenem Gerät, nicht auf Free-PaaS |
+| **vLLM / SGLang / LM Studio** | lokal (GPU) | 0 € | `ACTIVE_PROVIDER=local` — siehe [LOCAL_LLM.md](LOCAL_LLM.md) |
 
 Empfehlung Online: **Groq** (schnell, gratis, stabil) oder **Gemini flash-lite**.
+
+**Heim-PC / GPU:** Free-PaaS und lokales High-Performance-Serving sind getrennte Welten. vLLM/SGLang laufen auf dem **Gerät** hinter dem bestehenden OpenAI-Compat-Provider `local` (`LOCAL_LLM_*`). Anleitung: [docs/LOCAL_LLM.md](LOCAL_LLM.md).
 
 ## Wo Isaac selbst gratis laufen kann
 
@@ -37,7 +40,8 @@ export ISAAC_DISABLE_VECTOR_MEMORY=1
 export PORT=7860                   # von PaaS gesetzt (Render/HF)
 export ACTIVE_PROVIDER=groq
 export GROQ_API_KEY=...
-# Optional: ISAAC_ALLOW_LOCAL_LLM=1 nur wenn Ollama/local wirklich erreichbar ist
+# Optional: ISAAC_ALLOW_LOCAL_LLM=1 nur wenn Ollama/local (vLLM/SGLang/LM Studio)
+# wirklich erreichbar ist — siehe docs/LOCAL_LLM.md
 # Free-Cloud deaktiviert Loopback-Ollama/local automatisch (sonst hängt Fallback)
 ```
 

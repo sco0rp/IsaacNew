@@ -87,6 +87,38 @@ class TestProviderConfiguration(unittest.TestCase):
         self.assertEqual(local.api_key, "sk-local")
         self.assertTrue(local.available)
 
+    def test_local_llm_vllm_and_sglang_shaped_urls(self):
+        """Documented vLLM (~8000) / SGLang (~30000) recipes: full completions path, no key."""
+        cases = (
+            (
+                "http://127.0.0.1:8000/v1/chat/completions",
+                "my-vllm-model",
+            ),
+            (
+                "http://127.0.0.1:30000/v1/chat/completions",
+                "my-sglang-model",
+            ),
+        )
+        for base_url, model in cases:
+            with self.subTest(base_url=base_url):
+                env = {
+                    "LOCAL_LLM_BASE_URL": base_url,
+                    "LOCAL_LLM_MODEL": model,
+                    "LOCAL_LLM_API_KEY": "",
+                    "LOCAL_LLM_ENABLED": "1",
+                }
+                with patch.dict("os.environ", env, clear=False):
+                    defaults = config_module._provider_defaults_from_env()
+                local = defaults["local"]
+                self.assertEqual(local.provider_type, "openai_compat")
+                self.assertEqual(local.base_url, base_url)
+                self.assertTrue(local.base_url.endswith("/v1/chat/completions"))
+                self.assertEqual(local.model, model)
+                self.assertEqual(local.api_key, "")
+                self.assertTrue(local.available)
+                self.assertTrue(config_module.allows_missing_api_key(local))
+                self.assertTrue(config_module.is_loopback_provider(local))
+
     def test_upsert_default_keeps_single_default(self):
         cfg = config_module.IsaacConfig()
         provider = cfg.upsert_provider(

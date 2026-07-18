@@ -375,7 +375,7 @@ class AsyncRelay:
             if allows_missing_api_key(cfg):
                 raise ProviderErr(
                     f"{cfg.provider_id}: Local LLM nicht erreichbar ({cfg.base_url}). "
-                    "Starte LM Studio / vLLM / llama.cpp server."
+                    "Starte LM Studio / vLLM / SGLang / llama.cpp server."
                 )
             raise ProviderErr(f"{cfg.provider_id}: Endpoint nicht erreichbar")
         except asyncio.TimeoutError:

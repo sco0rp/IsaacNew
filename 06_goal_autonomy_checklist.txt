@@ -17,7 +17,7 @@ S1 GOAL STORE + PROMPT
 [x] Kernel: Ziel: / ziele / Ziel erledigt: / Ziel pause:
 [x] Status-Block mit aktiven Zielen
 [x] Tests routing + store
-[ ] Retrieval: active goals in build_retrieval_context (Slice 1b optional)
+[x] Retrieval: active goals in build_retrieval_context (Slice 1b)
 
 ──────────────────────────────────────────────────────────────────────────────
 S2 MOTIVATION + TICK

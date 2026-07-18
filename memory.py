@@ -18,7 +18,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Any
 from contextlib import contextmanager
 
@@ -46,6 +46,8 @@ class RetrievalContext:
     relevant_reflections: list[str]
     open_questions: list[str]
     relevant_procedures: list[dict]
+    # Goal-Autonomie Slice 1b: short owner-goal surface for prompt composition
+    active_goals: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -61,6 +63,7 @@ class RetrievalContext:
             "relevant_reflections": self.relevant_reflections,
             "open_questions": self.open_questions,
             "relevant_procedures": self.relevant_procedures,
+            "active_goals": self.active_goals,
         }
 
 
@@ -804,6 +807,8 @@ class Memory:
                     "risks": ["degraded_procedure"],
                 })
 
+        active_goals = self._active_goals_for_retrieval(limit=5)
+
         return RetrievalContext(
             query=query,
             active_directives=active_directives,
@@ -817,7 +822,62 @@ class Memory:
             relevant_reflections=relevant_reflections[:2],
             open_questions=open_questions[:3],
             relevant_procedures=relevant_procedures[:3],
+            active_goals=active_goals,
         )
+
+    def _active_goals_for_retrieval(self, *, limit: int = 5) -> list[dict]:
+        """Short active Owner-Goal surface for retrieval (fail-soft).
+
+        Caps lines for prompt size. Includes next subgoal title and up to
+        two open goal-bound inquiries when available.
+        """
+        rows: list[dict] = []
+        try:
+            from goal_store import get_goal_store
+
+            gs = get_goal_store()
+            open_inq: dict[str, list[str]] = {}
+            try:
+                from goal_inquiry import get_inquiry_store
+
+                for item in get_inquiry_store().list_open()[:12]:
+                    open_inq.setdefault(item.goal_id, []).append(item.question[:90])
+            except Exception:
+                pass
+
+            for goal in gs.list_goals(status="active")[: max(1, int(limit))]:
+                subs = gs.list_subgoals(goal.id, status="active")
+                next_sub = ""
+                if subs:
+                    # Prefer non-recovery first, else first active
+                    ordered = sorted(
+                        subs,
+                        key=lambda s: (0 if s.origin != "failure_recovery" else 1, s.created_at),
+                    )
+                    next_sub = (ordered[0].title or "")[:80]
+                latest = ""
+                try:
+                    rec = self.get_fact_record(f"goal_latest.{goal.id}")
+                    if rec and float(rec.get("confidence") or 0) >= MIN_RETRIEVAL_CONFIDENCE:
+                        latest = str(rec.get("value") or "")[:120]
+                except Exception:
+                    latest = ""
+                rows.append(
+                    {
+                        "goal_id": goal.id,
+                        "title": (goal.title or "")[:100],
+                        "priority": float(goal.priority or 0.0),
+                        "subgoals_active": len(subs),
+                        "next_subgoal": next_sub,
+                        "success_criteria": (goal.success_criteria or "")[:120],
+                        "latest": latest,
+                        "open_inquiries": (open_inq.get(goal.id) or [])[:2],
+                    }
+                )
+        except Exception as exc:
+            log.debug("active_goals retrieval: %s", exc)
+            return []
+        return rows
 
     def format_retrieval_context(self, retrieval_ctx: RetrievalContext | dict[str, Any]) -> str:
         if isinstance(retrieval_ctx, RetrievalContext):
@@ -832,6 +892,25 @@ class Memory:
                 sections.append(
                     f"  - prio={directive.get('priority', 0)}: {directive.get('text', '')}"
                 )
+        if data.get("active_goals"):
+            sections.append("[active_goals]")
+            for g in data["active_goals"]:
+                line = (
+                    f"  - p={float(g.get('priority') or 0):.1f} "
+                    f"[{str(g.get('goal_id') or '')[-8:]}] "
+                    f"{g.get('title', '')}"
+                )
+                if g.get("next_subgoal"):
+                    line += f" → {g.get('next_subgoal')}"
+                if g.get("subgoals_active"):
+                    line += f" ({g.get('subgoals_active')} sub)"
+                sections.append(line)
+                if g.get("success_criteria"):
+                    sections.append(f"    criteria: {g.get('success_criteria')}")
+                if g.get("latest"):
+                    sections.append(f"    latest: {g.get('latest')}")
+                for q in g.get("open_inquiries") or []:
+                    sections.append(f"    open_q: {q}")
         if data.get("relevant_facts"):
             sections.append("[relevant_facts]")
             for fact in data["relevant_facts"]:

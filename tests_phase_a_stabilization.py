@@ -3759,6 +3759,35 @@ class TestPhase4Connect(unittest.TestCase):
                 ranked2 = rank_motivation_decisions(store, limit=5)
             self.assertEqual(len(ranked2), 1)
 
+    def test_retrieval_includes_active_goals_block(self):
+        """Slice 1b: active owner goals appear in build/format retrieval."""
+        import tempfile
+        from goal_store import reset_goal_store_for_tests
+        from goal_inquiry import reset_inquiry_store_for_tests, get_inquiry_store
+        from memory import get_memory
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = reset_goal_store_for_tests(Path(tmp) / "g.json")
+            reset_inquiry_store_for_tests(Path(tmp) / "i.json")
+            goal = store.add_owner_goal(
+                "Isaac Kernel härten",
+                priority=0.95,
+                success_criteria="tests gruen",
+            )
+            store.add_subgoal(goal.id, "Unittests erweitern", origin="planner")
+            get_inquiry_store().add(goal.id, "Welches Modul zuerst?")
+
+            mem = get_memory()
+            ctx = mem.build_retrieval_context("Was machen wir als Nächstes?")
+            self.assertTrue(ctx.active_goals)
+            self.assertEqual(ctx.active_goals[0]["title"], "Isaac Kernel härten")
+            self.assertIn("Unittests", ctx.active_goals[0].get("next_subgoal") or "")
+            self.assertTrue(ctx.active_goals[0].get("open_inquiries"))
+            formatted = mem.format_retrieval_context(ctx)
+            self.assertIn("[active_goals]", formatted)
+            self.assertIn("Isaac Kernel härten", formatted)
+            self.assertIn("open_q:", formatted)
+
     def test_e2_trace_phases_include_evaluation_and_learning(self):
         """Evolution 2.0: DecisionTrace deckt Evaluation und Learning ab."""
         self.assertEqual(TracePhase.EVALUATION.value, "evaluation")

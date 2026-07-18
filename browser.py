@@ -472,10 +472,10 @@ class BrowserManager:
             window.chrome = {runtime: {}};
         """)
 
-        # Zur URL navigieren
+        # Zur URL navigieren (resilient wait — no networkidle hang)
         log.info(f"Instanz {inst.id}: Lade {inst.url}")
         try:
-            await inst.page.goto(inst.url, wait_until="networkidle", timeout=30000)
+            await self._safe_goto(inst.page, inst.url, timeout=30000)
             inst.aktiv = True
         except Exception as e:
             log.warning(f"Instanz {inst.id}: Navigation fehlgeschlagen: {e}")
@@ -494,6 +494,95 @@ class BrowserManager:
             raw = f"https://{raw}"
         return raw
 
+    @staticmethod
+    def _page_alive(inst: Optional["KIInstance"]) -> bool:
+        """True if instance page/context look usable (browser-use-style guard)."""
+        if not inst or not getattr(inst, "aktiv", False):
+            return False
+        page = getattr(inst, "page", None)
+        if page is None:
+            return False
+        try:
+            if hasattr(page, "is_closed") and page.is_closed():
+                return False
+        except Exception:
+            return False
+        return True
+
+    async def _safe_goto(
+        self,
+        page,
+        url: str,
+        *,
+        timeout: int = 30000,
+    ) -> None:
+        """Navigate with resilient wait strategy.
+
+        ``networkidle`` hangs on long-polling sites. Prefer ``domcontentloaded``,
+        then ``load``, then ``commit`` (Playwright / browser-use practice).
+        """
+        target = self._normalize_url(url)
+        if not target:
+            raise ValueError("leere URL")
+        last_err: Optional[Exception] = None
+        for wait_until in ("domcontentloaded", "load", "commit"):
+            try:
+                await page.goto(target, wait_until=wait_until, timeout=timeout)
+                return
+            except Exception as exc:
+                last_err = exc
+                log.debug(
+                    "goto fallback wait_until=%s url=%s err=%s",
+                    wait_until,
+                    target[:120],
+                    str(exc)[:120],
+                )
+        if last_err:
+            raise last_err
+        raise RuntimeError(f"Navigation fehlgeschlagen: {target[:120]}")
+
+    async def _safe_wait_load(self, page, *, timeout: int = 15000) -> None:
+        """Wait for load state without requiring networkidle."""
+        for state in ("domcontentloaded", "load"):
+            try:
+                await page.wait_for_load_state(state, timeout=timeout)
+                return
+            except Exception as exc:
+                log.debug("wait_for_load_state %s: %s", state, str(exc)[:100])
+
+    async def _action_with_retry(
+        self,
+        coro_factory,
+        *,
+        attempts: int = 2,
+        pause_s: float = 0.35,
+        label: str = "action",
+    ):
+        """Retry transient click/fill failures once (bounded)."""
+        last_err: Optional[Exception] = None
+        n = max(1, int(attempts))
+        for i in range(n):
+            try:
+                return await coro_factory()
+            except Exception as exc:
+                last_err = exc
+                if i + 1 >= n:
+                    break
+                log.debug("%s retry %s/%s: %s", label, i + 1, n, str(exc)[:100])
+                await asyncio.sleep(pause_s)
+        assert last_err is not None
+        raise last_err
+
+    async def _close_instance_resources(self, inst: KIInstance) -> None:
+        try:
+            if getattr(inst, "context", None):
+                await inst.context.close()
+        except Exception as exc:
+            log.debug("context close %s: %s", inst.id, exc)
+        inst.page = None
+        inst.context = None
+        inst.aktiv = False
+
     async def ensure_instance(self, instance_id: str, url: str, name: str = "") -> KIInstance:
         target_url = self._normalize_url(url)
         if not self._browser_allowed(target_url):
@@ -502,11 +591,16 @@ class BrowserManager:
             raise RuntimeError("Browser-Runtime nicht verfügbar")
 
         inst = self._instances.get(instance_id)
-        if inst and inst.aktiv:
+        if inst and self._page_alive(inst):
             if target_url and inst.url != target_url:
                 inst.url = target_url
-                await inst.page.goto(target_url, wait_until="networkidle", timeout=30000)
+                await self._safe_goto(inst.page, target_url, timeout=30000)
             return inst
+
+        # Stale/dead instance: drop resources before recreate
+        if inst and not self._page_alive(inst):
+            await self._close_instance_resources(inst)
+            self._instances.pop(instance_id, None)
 
         inst = await self._create_instance({
             "id": instance_id,
@@ -547,8 +641,7 @@ class BrowserManager:
         log.info(f"Auto-Login: {inst.id} @ {domain}")
         try:
             # Login-Seite aufrufen
-            await inst.page.goto(cred.login_url, wait_until="networkidle",
-                                 timeout=20000)
+            await self._safe_goto(inst.page, cred.login_url, timeout=20000)
             await asyncio.sleep(1.5)
 
             # Username eingeben
@@ -568,7 +661,7 @@ class BrowserManager:
             # Absenden
             try:
                 await inst.page.click(cred.submit_selector)
-                await inst.page.wait_for_load_state("networkidle", timeout=15000)
+                await self._safe_wait_load(inst.page, timeout=15000)
             except Exception:
                 log.warning(f"Submit fehlgeschlagen")
 
@@ -590,8 +683,7 @@ class BrowserManager:
 
             # Zurück zur Chat-URL
             if inst.url != cred.login_url:
-                await inst.page.goto(inst.url, wait_until="networkidle",
-                                     timeout=20000)
+                await self._safe_goto(inst.page, inst.url, timeout=20000)
 
             AuditLog.instance(inst.id, "logged_in", detail=domain)
 
@@ -608,7 +700,7 @@ class BrowserManager:
         Gibt die Antwort als Text zurück.
         """
         inst = self._instances.get(instance_id)
-        if not inst or not inst.aktiv:
+        if not inst or not self._page_alive(inst):
             return f"[Browser] Instanz {instance_id} nicht verfügbar"
 
         async with self._lock:
@@ -1021,7 +1113,7 @@ class BrowserManager:
                     url = self._normalize_url(action.get("url") or start_url)
                     if not self._browser_allowed(url):
                         raise PermissionError("Externe Browser-Ziele sind deaktiviert")
-                    await page.goto(url, wait_until="networkidle", timeout=30000)
+                    await self._safe_goto(page, url, timeout=30000)
                     steps.append({"step": idx, "action": kind, "url": page.url, "ok": True})
                     continue
 
@@ -1039,18 +1131,29 @@ class BrowserManager:
 
                 target = self._resolve_target(page, action)
                 if kind == "click":
-                    await target.click(timeout=10000)
+                    await self._action_with_retry(
+                        lambda t=target: t.click(timeout=10000),
+                        label="click",
+                    )
                     steps.append({"step": idx, "action": kind, "target": action.get("selector") or action.get("text"), "ok": True})
                     continue
 
                 if kind == "fill":
                     value = str(action.get("value") or "")
-                    await target.fill(value, timeout=10000)
+                    await self._action_with_retry(
+                        lambda t=target, v=value: t.fill(v, timeout=10000),
+                        label="fill",
+                    )
                     steps.append({"step": idx, "action": kind, "target": action.get("selector") or action.get("text"), "ok": True})
                     continue
 
                 if kind in {"extract_text", "extract_value"}:
-                    value = await (target.input_value(timeout=10000) if kind == "extract_value" else target.inner_text(timeout=10000))
+                    async def _extract(t=target, k=kind):
+                        if k == "extract_value":
+                            return await t.input_value(timeout=10000)
+                        return await t.inner_text(timeout=10000)
+
+                    value = await self._action_with_retry(_extract, label=kind)
                     slot = (action.get("save_as") or f"value_{idx}").strip()
                     memory[slot] = value.strip()
                     steps.append({"step": idx, "action": kind, "save_as": slot, "length": len(memory[slot]), "ok": True})
@@ -1135,16 +1238,15 @@ class BrowserManager:
     async def _restart_instance(self, inst: KIInstance):
         log.warning(f"Neustart: {inst.id}")
         try:
-            if inst.context:
-                await inst.context.close()
-            inst.fehler  = 0
-            inst.aktiv   = False
+            await self._close_instance_resources(inst)
+            inst.fehler = 0
+            if not await self._ensure_runtime():
+                raise RuntimeError("Browser-Runtime nicht verfügbar")
             inst.context = await self._browser.new_context(
                 viewport={"width": 1280, "height": 900}
             )
             inst.page = await inst.context.new_page()
-            await inst.page.goto(inst.url, wait_until="networkidle",
-                                 timeout=30000)
+            await self._safe_goto(inst.page, inst.url, timeout=30000)
             inst.aktiv = True
             await self._auto_login(inst)
             AuditLog.instance(inst.id, "restarted")

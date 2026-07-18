@@ -16,7 +16,7 @@ Siehe auch: `docs/OPEN_SOURCE_PATTERNS.md`, `docs/LOCAL_LLM.md`, `docs/OPEN_INTE
 | [Letta](https://github.com/letta-ai/letta) | Companion + Memory-Ideen | `letta:` Companion |
 | [Graphiti](https://github.com/getzep/graphiti) | Temporal facts | **Muster umgesetzt**: `goal_latest` > `goal_progress`, demote on update |
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Tool-Schema / computer-use | `hermes_compat` + eigene Module |
-| [browser-use](https://github.com/browser-use/browser-use) | Browser-Robustheit | Nur bei konkretem Bug in `browser.py` (kein wholesale) |
+| [browser-use](https://github.com/browser-use/browser-use) | Browser-Robustheit | **Muster in `browser.py`**: `_safe_goto`, page-alive, action-retry (kein Package) |
 | [Agent_Memory_Techniques](https://github.com/NirDiamant/Agent_Memory_Techniques) | Lern-Notebooks | lesen, nicht installieren |
 
 ## Tier B — Goal-Autonomie (Muster → Phase 1 Plan)

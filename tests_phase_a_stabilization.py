@@ -4011,6 +4011,64 @@ class TestPhase4Connect(unittest.TestCase):
         self.assertIsNotNone(blocked)
         self.assertFalse(blocked.get("ok", True))
 
+    def test_browser_safe_goto_falls_back_wait_until(self):
+        """Navigation retries wait_until (no networkidle hang)."""
+        import asyncio
+        from browser import BrowserManager, KIInstance
+
+        mgr = BrowserManager()
+        calls: list[str] = []
+
+        class FakePage:
+            async def goto(self, url, wait_until="load", timeout=30000):
+                calls.append(wait_until)
+                if wait_until == "domcontentloaded":
+                    raise TimeoutError("simulated domcontentloaded timeout")
+                if wait_until == "load":
+                    return None
+                raise TimeoutError("should not reach commit")
+
+        asyncio.run(mgr._safe_goto(FakePage(), "https://example.com", timeout=1000))
+        self.assertEqual(calls, ["domcontentloaded", "load"])
+
+        dead = KIInstance(id="x", url="https://example.com", name="x")
+        dead.aktiv = True
+        dead.page = None
+        self.assertFalse(BrowserManager._page_alive(dead))
+
+        class ClosedPage:
+            def is_closed(self):
+                return True
+
+        dead.page = ClosedPage()
+        self.assertFalse(BrowserManager._page_alive(dead))
+
+        class OpenPage:
+            def is_closed(self):
+                return False
+
+        alive = KIInstance(id="y", url="https://example.com", name="y")
+        alive.aktiv = True
+        alive.page = OpenPage()
+        self.assertTrue(BrowserManager._page_alive(alive))
+
+    def test_browser_action_with_retry_once(self):
+        import asyncio
+        from browser import BrowserManager
+
+        mgr = BrowserManager()
+        n = {"c": 0}
+
+        async def flaky():
+            n["c"] += 1
+            if n["c"] < 2:
+                raise RuntimeError("transient")
+            return "ok"
+
+        out = asyncio.run(mgr._action_with_retry(flaky, attempts=2, pause_s=0.01))
+        self.assertEqual(out, "ok")
+        self.assertEqual(n["c"], 2)
+
     def test_e2_browser_provision_requires_owner(self):
         from browser import BrowserManager
 

@@ -27,7 +27,9 @@ S2 MOTIVATION + TICK
 [x] Subgoal auto-create für active goals
 [x] DecisionTrace MOTIVATION phase
 [x] Status: nächste Motivation
-[ ] Research-Tools default nur bei Research-Zielen (partial: title heuristic)
+[x] Research-Tools nur bei Research-Markern/Meta (kein attempts%3 Tool-Spam)
+[x] Anti-Spam: Subgoal-Cooldown (ISAAC_GOAL_SUBGOAL_COOLDOWN_S), Attempts-Dämpfung
+[x] Max-Attempts pro Subgoal (ISAAC_GOAL_MAX_SUBGOAL_ATTEMPTS) → failed + Inquiry
 
 ──────────────────────────────────────────────────────────────────────────────
 S3 INQUIRY / RESEARCH / LEARN (an goal_id)
@@ -36,5 +38,6 @@ S3 INQUIRY / RESEARCH / LEARN (an goal_id)
 [x] goal_inquiry store (offene Fragen an Steffen)
 [x] Research/Inquiry-Prompts mit Owner-Ziel-ID
 [x] record_goal_learning_from_task → facts source=goal:{id}
-[x] Failure → recovery subgoal
+[x] Failure → recovery subgoal (cap: max 1 active recovery; kein Recovery-von-Recovery)
+[x] Subgoal-Verify: high score / success_criteria → subgoal done; optional goal done
 [ ] Digest-Kanal gebündelt (Slice 4)

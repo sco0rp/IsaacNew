@@ -8,6 +8,7 @@ Kein Chat-Tool-Leak: wird nur aus Goal-Autonomie-Tasks genutzt.
 
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -22,6 +23,30 @@ from goal_store import GoalStore, IsaacSubgoal, OwnerGoal, get_goal_store
 log = logging.getLogger("Isaac.GoalInquiry")
 
 INQUIRY_PATH = DATA_DIR / "goal_inquiries.json"
+
+# Subgoal auto-done when task succeeds with score >= this (env override)
+DEFAULT_SUBGOAL_DONE_MIN_SCORE = 5.5
+DEFAULT_MAX_SUBGOAL_ATTEMPTS = 8
+
+
+def subgoal_done_min_score() -> float:
+    raw = os.getenv("ISAAC_GOAL_SUBGOAL_DONE_MIN_SCORE")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_SUBGOAL_DONE_MIN_SCORE
+    try:
+        return max(0.0, min(10.0, float(raw)))
+    except (TypeError, ValueError):
+        return DEFAULT_SUBGOAL_DONE_MIN_SCORE
+
+
+def max_subgoal_attempts() -> int:
+    raw = os.getenv("ISAAC_GOAL_MAX_SUBGOAL_ATTEMPTS")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_MAX_SUBGOAL_ATTEMPTS
+    try:
+        return max(1, min(50, int(raw)))
+    except (TypeError, ValueError):
+        return DEFAULT_MAX_SUBGOAL_ATTEMPTS
 
 _RESEARCH_MARKERS = (
     "recherch", "research", "untersuche", "finde heraus", "suche information",
@@ -180,12 +205,19 @@ def choose_work_mode(
     goal: OwnerGoal,
     subgoal: IsaacSubgoal,
 ) -> tuple[str, bool, str]:
-    """task_type, allow_tools, mode_tag (plan|research|inquiry|work)."""
+    """task_type, allow_tools, mode_tag (plan|research|inquiry|work).
+
+    Research+tools only when goal/subgoal text or metadata requests research —
+    not via blind attempt modulo (anti tool-spam).
+    """
     meta = goal.metadata or {}
-    if meta.get("force_research"):
+    kind = str(meta.get("kind") or meta.get("task_type") or "").strip().lower()
+    if meta.get("force_research") or kind in {"research", "recherche"}:
         return "research", True, "research"
-    if meta.get("force_inquiry"):
+    if meta.get("force_inquiry") or kind in {"inquiry", "frage"}:
         return "chat", False, "inquiry"
+    if meta.get("allow_tools") is True and kind == "work":
+        return "chat", True, "work"
     text = f"{goal.title} {goal.description} {subgoal.title}".lower()
     if any(m in text for m in _RESEARCH_MARKERS):
         return "research", True, "research"
@@ -194,13 +226,10 @@ def choose_work_mode(
     attempts = int(subgoal.attempts or 0)
     if attempts == 0:
         return "chat", False, "plan"
-    # Alternierend: Research → Inquiry → Work (kein Ambitions-Stop)
-    phase = attempts % 3
-    if phase == 1:
-        return "research", True, "research"
-    if phase == 2:
-        return "chat", False, "inquiry"
-    return "chat", False, "work"
+    # Later attempts: plan → work only (no automatic research tools)
+    if attempts >= 2:
+        return "chat", False, "work"
+    return "chat", False, "plan"
 
 
 def build_goal_prompt(
@@ -363,26 +392,89 @@ def record_goal_learning_from_task(task: Any) -> dict[str, Any]:
         result["ok"] = False
         result["reason"] = str(exc)
 
-    # Subgoal last_outcome
+    # Subgoal verification / stop / recovery (bounded)
     try:
         gs = get_goal_store()
+        goal = gs.goals.get(goal_id)
         if subgoal_id and subgoal_id in gs.subgoals:
             sg = gs.subgoals[subgoal_id]
             sg.last_outcome = (antwort or status)[:300]
             sg.updated_at = _now()
-            if status == "failed":
-                # Recovery-Subgoal anlegen (kein Aufgeben)
-                gs.add_subgoal(
-                    goal_id,
-                    title=f"Recovery nach Fail: {sg.title[:60]}",
-                    origin="failure_recovery",
-                    next_action_hint=(
-                        f"Vorheriger Schritt scheiterte. Analysiere Ursache und wähle einen robusteren Weg "
-                        f"für Owner-Ziel {goal_id}."
-                    ),
+            status_l = str(status or "").lower()
+            done_min = subgoal_done_min_score()
+            max_att = max_subgoal_attempts()
+            criteria_hit = bool(
+                goal and gs.criteria_satisfied(goal, antwort)
+            )
+            success = (
+                status_l in {"done", "completed", "success"}
+                and score >= done_min
+            ) or criteria_hit
+
+            if success and sg.status == "active":
+                sg.status = "done"
+                result["subgoal_status"] = "done"
+                result["criteria_hit"] = criteria_hit
+                gs.subgoals[subgoal_id] = sg
+                gs.save()
+                if goal and criteria_hit:
+                    goal.status = "done"
+                    goal.updated_at = _now()
+                    gs.goals[goal.id] = goal
+                    gs.save()
+                    result["goal_status"] = "done"
+                elif gs.maybe_complete_goal(goal_id):
+                    result["goal_status"] = "done"
+            elif status_l in {"failed", "error", "cancelled"} and sg.status == "active":
+                # Cap recovery: only one active recovery; never recover from recovery forever
+                can_recover = (
+                    sg.origin != "failure_recovery"
+                    and gs.count_active_recovery(goal_id) == 0
+                    and int(sg.attempts or 0) < max_att
                 )
-            gs.subgoals[subgoal_id] = sg
-            gs.save()
+                if can_recover:
+                    gs.add_subgoal(
+                        goal_id,
+                        title=f"Recovery nach Fail: {sg.title[:60]}",
+                        origin="failure_recovery",
+                        next_action_hint=(
+                            f"Vorheriger Schritt scheiterte. Analysiere Ursache und wähle einen "
+                            f"robusteren Weg für Owner-Ziel {goal_id}."
+                        ),
+                    )
+                    result["recovery"] = True
+                if int(sg.attempts or 0) >= max_att:
+                    sg.status = "failed"
+                    result["subgoal_status"] = "failed"
+                    try:
+                        get_inquiry_store().add(
+                            goal_id,
+                            f"Subgoal '{sg.title[:80]}' nach {sg.attempts} Versuchen gescheitert. "
+                            f"Wie soll Isaac fortfahren?",
+                            subgoal_id=subgoal_id,
+                        )
+                        result["inquiries"] = int(result.get("inquiries") or 0) + 1
+                    except Exception:
+                        pass
+                gs.subgoals[subgoal_id] = sg
+                gs.save()
+            else:
+                # Still active: attempt cap without hard fail status
+                if int(sg.attempts or 0) >= max_att and sg.status == "active":
+                    sg.status = "failed"
+                    result["subgoal_status"] = "failed"
+                    try:
+                        get_inquiry_store().add(
+                            goal_id,
+                            f"Subgoal '{sg.title[:80]}' hat Versuchslimit ({max_att}) erreicht. "
+                            f"Neue Richtung?",
+                            subgoal_id=subgoal_id,
+                        )
+                        result["inquiries"] = int(result.get("inquiries") or 0) + 1
+                    except Exception:
+                        pass
+                gs.subgoals[subgoal_id] = sg
+                gs.save()
     except Exception as exc:
         log.debug("goal subgoal update: %s", exc)
 

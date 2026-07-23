@@ -8,6 +8,7 @@ Systemschutz bleibt (Constitution/Privilege/Audit).
 S0 KANONIK
 ──────────────────────────────────────────────────────────────────────────────
 [x] AGENTS.md: goal-directed Autonomie freigegeben
+[x] AGENTS.md Phasen-Tabelle: Goal-Autonomie ✅ (S0–S4, Doc-Sync 2026-07-23)
 [x] Do-Not-Expand: ungebundene Personality/Trust vs Owner bleibt verboten
 
 ──────────────────────────────────────────────────────────────────────────────

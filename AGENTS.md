@@ -145,7 +145,7 @@ Keine versteckte Tool-Autonomie.
 | **3 — REFINE** | ✅ | `constitution.py`, `self_model.py`, `task_checkpoint.py`, MCP-Grundgerüst, `evals/`, Dashboard offene Fragen |
 | **4 — CONNECT** | ✅ | Vernetzung: Constitution-Grenzen, DecisionTrace, Regelwerk→Retrieval, Procedure→Selection, MCP-Härtung |
 | **Evolution 2.0** | ✅ | Policy-Enforcement, DecisionTrace Evaluation/Learning, Procedure-Selection, Constitution-Boundaries, Owner-Autonomie (bounded) |
-| **Goal-Autonomie** | 🔄 | Steffen-goal-directed free agency: Goal Store, Subgoals, Motivation, Inquiry/Research an Ziele gebunden |
+| **Goal-Autonomie** | ✅ | Steffen-goal-directed free agency: Goal Store, Subgoals, Motivation, Inquiry/Research an Ziele gebunden (S0–S4, 2026-07-18) |
 
 ### Do NOT start or expand (aktuelle Disziplin)
 
@@ -383,8 +383,8 @@ Read AGENTS.md first — it is the canonical instruction set.
 
 MISSION: Improve Isaac incrementally, safely, architecture-aware. Local stateful cognitive kernel — NOT a chatbot wrapper.
 
-CURRENT PHASE: Goal-directed autonomy (Phase 1–4 + E2.0 done). Owner goals → subgoals → act → learn.
-ALLOWED: goal store, motivation, inquiry/research bound to goal_id, free ambition for owner-aligned goals.
+CURRENT PHASE: Consolidate core behavior (Phase 1–4 + E2.0 + Goal-Autonomie S0–S4 done). Owner goals → subgoals → act → learn remains operational.
+ALLOWED: maintain/harden goal store, motivation, inquiry/research bound to goal_id; free ambition for owner-aligned goals.
 Do NOT expand: companion/personality theater, trust modeling vs owner, dashboard redesign, cloud deploy, MCP/subagent expansion, broad redesign.
 KEEP: Constitution protect_user, privilege, audit; classification controls routing; executor does not reclassify; normal chat no opportunistic tools.
 
@@ -407,14 +407,14 @@ WHEN IN DOUBT: stop, document blocker, do not broaden scope.
 Bei vertiefter Arbeit in dieser Reihenfolge:
 
 1. `AGENTS.md` (diese Datei) — kanonische Agenten-Anweisung
-2. `06_goal_autonomy_checklist.txt` — aktuelle Phase Goal-Autonomie
+2. `06_goal_autonomy_checklist.txt` — Goal-Autonomie S0–S4 (abgeschlossen)
 3. `05_evolution2_checklist.txt` — Evolution 2.0 (abgeschlossen, CI-Hinweis)
 4. `docs/OPEN_SOURCE_PATTERNS.md` — bounded Open-Source-Muster
 5. `docs/GITHUB_WATCHLIST.md` — was beobachten / nicht importieren
 6. `docs/LOCAL_LLM.md`, `docs/OPEN_INTERPRETER.md` — optionale lokale Backends/Companions
 7. `README.md`, `docs/LEITBILD.md`
 
-**Priorität bei Widersprüchen:** `AGENTS.md` → aktive Checklist (`06_…`) → Open-Source-Patterns.
+**Priorität bei Widersprüchen:** `AGENTS.md` → Checklisten (`06_…` / `05_…`) → Open-Source-Patterns.
 
 Historische Phase-3/4-Checklisten und Alt-Instruktionen liegen nicht mehr im Tree
 (git history / früher `archive/unused`).

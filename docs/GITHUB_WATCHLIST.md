@@ -19,14 +19,14 @@ Siehe auch: `docs/OPEN_SOURCE_PATTERNS.md`, `docs/LOCAL_LLM.md`, `docs/OPEN_INTE
 | [browser-use](https://github.com/browser-use/browser-use) | Browser-Robustheit | **Muster in `browser.py`**: `_safe_goto`, page-alive, action-retry (kein Package) |
 | [Agent_Memory_Techniques](https://github.com/NirDiamant/Agent_Memory_Techniques) | Lern-Notebooks | lesen, nicht installieren |
 
-## Tier B — Goal-Autonomie (Muster → Phase 1 Plan)
+## Tier B — Goal-Autonomie (Muster — S0–S4 umgesetzt)
 
 | Projekt | Übernommenes Muster |
 |---------|---------------------|
 | [goal-driven](https://github.com/lidangzzz/goal-driven) | Stop-Kriterien, Subgoal-Gates, Verification |
 | [autogoals](https://github.com/ozankasikci/autogoals) | Goal-as-contract, kein freier Loop |
 
-Umsetzung: `goal_store` / `motivation` / `goal_inquiry` — kein Import der Repos.
+Umsetzung: `goal_store` / `motivation` / `goal_inquiry` / `goal_digest` — kein Import der Repos.
 
 ## Tier C — Companion only (expliziter Prefix)
 
@@ -62,5 +62,5 @@ OpenClaw/Hermes/Cline als Orchestrator.
 
 ## Status
 
-Phase 1–2 Goal-Autonomie + Phase 3.1 Temporal Facts: siehe `06_goal_autonomy_checklist.txt`.
+Goal-Autonomie S0–S4 **DONE** (2026-07-18): Store, Motivation, Inquiry/Research, Digest, Temporal Facts — siehe `06_goal_autonomy_checklist.txt`.
 Browser-use wholesale: **deferred** bis konkreter Defekt.

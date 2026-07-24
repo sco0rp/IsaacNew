@@ -60,6 +60,11 @@ CrewAI, AutoGPT, LangGraph wholesale, Ray, DeepSpeed, Megatron, verl,
 Mem0/Zep Cloud als Default, Companion-Theater, MCP-Subagent-Expansion,
 OpenClaw/Hermes/Cline als Orchestrator.
 
+**Drive-Patch-Pakete / Parallel-Roadmaps** (IsaacNew-main Folder, Juli 2026):  
+`task_state_machine.py`, `trace_otel.py` (eigene Trace-Typen), Isaac-Lab-Mocks,
+Vector-Pipeline-Doppelpfade, `MASTER_UNIFIED_ROADMAP_*` v1–v4 als aktive Phase —  
+**nicht importieren.** Begründung: `docs/DRIVE_PATCH_REVIEW_2026-07-24.md`.
+
 ## Status
 
 Goal-Autonomie S0–S4 **DONE** (2026-07-18): Store, Motivation, Inquiry/Research, Digest, Temporal Facts — siehe `06_goal_autonomy_checklist.txt`.

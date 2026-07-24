@@ -373,6 +373,10 @@ Nicht in unrelated Module driften, außer bei blockierendem Fix.
 4. MCP vollständig (Grundgerüst vorhanden)
 5. Eval-Harness ausbauen (`evals/` — partiell vorhanden)
 
+**Nicht aus Drive-Patch-Paketen / Parallel-Roadmaps übernehmen** (Juli 2026):  
+eigene State-Machine, OTel-Doppeltypen, Isaac-Lab-Mocks, Vector-Doppelpfade.  
+Siehe `docs/DRIVE_PATCH_REVIEW_2026-07-24.md`.
+
 ---
 
 ## Kompakter Ausführungs-Prompt (Copy-Paste)

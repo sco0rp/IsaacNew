@@ -58,6 +58,109 @@ class DecisionTrace:
     def to_list(self) -> list[dict[str, Any]]:
         return [entry.to_dict() for entry in self.entries]
 
+    def to_portable_export(self, request_id: str = "") -> dict[str, Any]:
+        """
+        Lokaler, OTel-ähnlicher Export der echten DecisionTrace-Einträge.
+
+        Kein externes Backend, keine zweite TracePhase-Welt.
+        Nutzt ausschließlich die kanonischen TracePhase-Werte.
+        """
+        rid = (request_id or "").strip() or "isaac-trace"
+        if not self.entries:
+            return {
+                "schema": "isaac.decision_trace.portable_v1",
+                "request_id": rid,
+                "service": "isaac-cognitive-kernel",
+                "resourceSpans": [],
+                "entries": [],
+            }
+
+        root_start = self.entries[0].ts
+        root_end = self.entries[-1].ts
+        root_span_id = f"root-{rid[:12]}"
+        spans: list[dict[str, Any]] = [
+            {
+                "traceId": rid,
+                "spanId": root_span_id,
+                "name": "isaac.request",
+                "kind": "SERVER",
+                "startTimeUnixNano": int(root_start * 1_000_000_000),
+                "endTimeUnixNano": int(root_end * 1_000_000_000),
+                "attributes": {
+                    "isaac.request_id": rid,
+                    "service.name": "isaac-cognitive-kernel",
+                },
+                "events": [],
+            }
+        ]
+
+        phase_spans: dict[str, dict[str, Any]] = {}
+        for entry in self.entries:
+            phase_key = entry.phase.value
+            if phase_key not in phase_spans:
+                span = {
+                    "traceId": rid,
+                    "spanId": f"{phase_key}-{rid[:12]}",
+                    "parentSpanId": root_span_id,
+                    "name": _portable_span_name(entry.phase),
+                    "kind": "INTERNAL",
+                    "startTimeUnixNano": int(entry.ts * 1_000_000_000),
+                    "endTimeUnixNano": int(entry.ts * 1_000_000_000),
+                    "attributes": {"isaac.phase": phase_key},
+                    "events": [],
+                }
+                phase_spans[phase_key] = span
+                spans.append(span)
+            phase_spans[phase_key]["events"].append(
+                {
+                    "timeUnixNano": int(entry.ts * 1_000_000_000),
+                    "name": entry.event,
+                    "attributes": dict(entry.data or {}),
+                }
+            )
+            phase_spans[phase_key]["endTimeUnixNano"] = int(entry.ts * 1_000_000_000)
+
+        return {
+            "schema": "isaac.decision_trace.portable_v1",
+            "request_id": rid,
+            "service": "isaac-cognitive-kernel",
+            "entries": self.to_list(),
+            "resourceSpans": [
+                {
+                    "resource": {
+                        "attributes": {
+                            "service.name": "isaac-cognitive-kernel",
+                        }
+                    },
+                    "scopeSpans": [
+                        {
+                            "scope": {"name": "isaac.decision_trace"},
+                            "spans": spans,
+                        }
+                    ],
+                }
+            ],
+        }
+
+
+def _portable_span_name(phase: TracePhase) -> str:
+    """Semantische Span-Namen für lokalen Export (kein OTel-SDK)."""
+    mapping = {
+        TracePhase.GOVERNANCE: "isaac.guardrail",
+        TracePhase.CLASSIFICATION: "isaac.classify",
+        TracePhase.RETRIEVAL: "isaac.retrieval",
+        TracePhase.STRATEGY: "isaac.strategy",
+        TracePhase.MOTIVATION: "isaac.motivation",
+        TracePhase.ELIGIBILITY: "isaac.eligibility",
+        TracePhase.SELECTION: "isaac.selection",
+        TracePhase.EXECUTION: "isaac.execution",
+        TracePhase.CONTEXT_INTEGRATION: "isaac.context_integration",
+        TracePhase.EVALUATION: "isaac.evaluation",
+        TracePhase.LEARNING: "isaac.learning",
+        TracePhase.FOLLOWUP: "isaac.followup",
+    }
+    return mapping.get(phase, f"isaac.{phase.value}")
+
 
 def gate_trace_data(gate: dict[str, Any] | None) -> dict[str, Any]:
     """Serialisiert ein Verfassungs-Gate-Urteil für DecisionTrace/Audit."""

@@ -1038,6 +1038,27 @@ class TestCriticalBugs(unittest.TestCase):
         self.assertEqual(data["decision_trace"][0]["event"], "evaluated")
         json.dumps(data)
 
+    def test_decision_trace_portable_export_uses_canonical_phases(self):
+        """Drive trace_otel.py doppelte TracePhase vermeiden — Export über echte Typen."""
+        trace = DecisionTrace()
+        trace.add(TracePhase.GOVERNANCE, "gate", {"allowed": True})
+        trace.add(TracePhase.CLASSIFICATION, "classified", {"interaction_class": "normal_chat"})
+        trace.add(TracePhase.MOTIVATION, "tick", {"goal_id": "g1"})
+        portable = trace.to_portable_export(request_id="req-portable-1")
+        self.assertEqual(portable["schema"], "isaac.decision_trace.portable_v1")
+        self.assertEqual(portable["request_id"], "req-portable-1")
+        phases = [e["phase"] for e in portable["entries"]]
+        self.assertEqual(phases, ["governance", "classification", "motivation"])
+        # echte lowercase-Phasen, nicht UPPERCASE-Doppelwelt aus Drive-Patches
+        span_phases = []
+        for rs in portable["resourceSpans"]:
+            for ss in rs["scopeSpans"]:
+                for span in ss["spans"]:
+                    if "isaac.phase" in span.get("attributes", {}):
+                        span_phases.append(span["attributes"]["isaac.phase"])
+        self.assertIn("motivation", span_phases)
+        json.dumps(portable)
+
     def test_bug_34_explanatory_weather_prompt_stays_normal_chat(self):
         result = classify_interaction_result(
             "Erkläre mir das Wetter als sprachliches Motiv in Literatur"

@@ -65,11 +65,31 @@ async def _run_reliability() -> dict:
 
     trace = DecisionTrace()
     trace.add(TracePhase.EVALUATION, "scored", {"score_total": 8.5})
+    from decision_trace import build_execution_llm_trace_data
+
+    trace.add(
+        TracePhase.EXECUTION,
+        "model_call",
+        build_execution_llm_trace_data(
+            provider="eval-mock",
+            model="mock-model",
+            latency_ms=10.0,
+            iteration=0,
+            prompt_chars=8,
+            response_chars=1,
+            input_tokens=4,
+            output_tokens=1,
+        ),
+    )
     portable = trace.to_portable_export(request_id="eval-reliability-trace")
+    phases = [e["phase"] for e in portable.get("entries", [])]
+    exec_data = next((e["data"] for e in portable.get("entries", []) if e["phase"] == "execution"), {})
     portable_ok = (
-        portable.get("schema") == "isaac.decision_trace.portable_v1"
-        and portable.get("entries")
-        and portable["entries"][0]["phase"] == "evaluation"
+        portable.get("schema") == "isaac.decision_trace.portable_v1_1"
+        and "evaluation" in phases
+        and "execution" in phases
+        and exec_data.get("gen_ai.system") == "eval-mock"
+        and exec_data.get("gen_ai.request.model") == "mock-model"
     )
 
     cases = [

@@ -260,10 +260,11 @@ def _portable_and_checkpoint_graph_cases() -> list[dict]:
         {
             "name": "portable_export_includes_motivation_and_evaluation",
             "ok": (
-                portable.get("schema") == "isaac.decision_trace.portable_v1"
+                portable.get("schema") in {"isaac.decision_trace.portable_v1", "isaac.decision_trace.portable_v1_1"}
                 and "motivation" in phases
                 and "evaluation" in phases
                 and "learning" in phases
+                and "execution" in phases
             ),
             "detail": {"phases": phases, "schema": portable.get("schema")},
         },

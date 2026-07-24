@@ -44,7 +44,11 @@ from task_checkpoint import (
 )
 from task_tool_state import get_task_tool_state_store
 from low_complexity import ClassificationResult
-from decision_trace import DecisionTrace, TracePhase
+from decision_trace import (
+    DecisionTrace,
+    TracePhase,
+    build_execution_llm_trace_data,
+)
 from result_contract import ensure_result_contract
 from tool_policy import (
     ToolPolicy,
@@ -807,6 +811,22 @@ class Executor:
             task.provider_used = prov
             task.log(f"Latency: prep={provider_hint_ms}ms model={model_call_ms}ms provider={prov}")
 
+            model_name = ""
+            try:
+                pcfg = get_config().get_provider(prov) if prov else None
+                model_name = str(getattr(pcfg, "model", "") or getattr(pcfg, "default_model", "") or "")
+            except Exception:
+                model_name = ""
+            # Rough token estimate without sending raw prompts into the trace.
+            try:
+                from relay import RateLimiter
+
+                approx_in = RateLimiter.estimate_tokens(system + "\n" + effective_prompt)
+                approx_out = RateLimiter.estimate_tokens(antwort or "")
+            except Exception:
+                approx_in = max(1, (len(system) + len(effective_prompt)) // 4)
+                approx_out = max(0, len(antwort or "") // 4)
+
             if task.status == TaskStatus.CANCELLED:
                 task.log("Während Provider-Aufruf abgebrochen")
                 return
@@ -823,8 +843,42 @@ class Executor:
                 task.antwort = antwort
                 task.fehler = antwort[:200]
                 task.status = TaskStatus.FAILED
+                task.decision_trace.add(
+                    TracePhase.EXECUTION,
+                    "model_call_failed",
+                    build_execution_llm_trace_data(
+                        provider=prov or "",
+                        model=model_name,
+                        latency_ms=model_call_ms,
+                        iteration=iteration,
+                        prompt_chars=len(effective_prompt),
+                        response_chars=len(antwort or ""),
+                        input_tokens=approx_in,
+                        output_tokens=approx_out,
+                        ok=False,
+                        error=antwort[:200],
+                        extra={"prep_ms": provider_hint_ms},
+                    ),
+                )
                 task.log(f"Relay fehlgeschlagen nach Fallback: {antwort[:120]}")
                 return
+
+            task.decision_trace.add(
+                TracePhase.EXECUTION,
+                "model_call",
+                build_execution_llm_trace_data(
+                    provider=prov or "",
+                    model=model_name,
+                    latency_ms=model_call_ms,
+                    iteration=iteration,
+                    prompt_chars=len(effective_prompt),
+                    response_chars=len(antwort or ""),
+                    input_tokens=approx_in,
+                    output_tokens=approx_out,
+                    ok=True,
+                    extra={"prep_ms": provider_hint_ms},
+                ),
+            )
 
             self._get_watchdog().record_progress(task.id)
 
@@ -850,6 +904,7 @@ class Executor:
                     "acceptable": bool(getattr(score, "acceptable", False)),
                     "iteration": iteration,
                     "provider": prov or "",
+                    "model": model_name,
                     "eval_ms": eval_ms,
                     "summary": (score.summary() if hasattr(score, "summary") else "")[:120],
                 },

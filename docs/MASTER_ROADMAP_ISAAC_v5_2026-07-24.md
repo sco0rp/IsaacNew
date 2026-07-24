@@ -155,12 +155,12 @@ Jeder Track: **klein, testbar, ROT/BLAU/GRÜN-Ownership, nach jedem Substep runn
 
 #### C1 — Observability / DecisionTrace vertiefen (ROT/GRÜN)
 
-- [ ] EXECUTION-Spans: `provider`/`model`/`latenz`/Tokens unter stabilen Keys (optional `gen_ai.*` Aliase im Export)  
-- [ ] Optional: `export_portable_trace(path)` Hilfsfunktion **in** `decision_trace.py` (kein zweites Modul)  
-- [ ] Redaction vor Export (wie Audit)  
-- [ ] Eval: portable export enthält model/latency wenn gesetzt  
+- [x] EXECUTION-Spans: `provider`/`model`/`latenz`/Tokens unter stabilen Keys (+ `gen_ai.*` Aliase im Export)  
+- [x] `export_portable_trace(path)` Hilfsfunktion **in** `decision_trace.py` (kein zweites Modul)  
+- [x] Redaction vor Export (api_key/token/password…)  
+- [x] Eval/unittest: portable export enthält model/latency (`portable_v1_1`)  
 
-**DoD:** Ein Task-Lauf → portable JSON mit Phasen + EXECUTION-Metadaten, ohne Cloud-Collector.
+**DoD:** Ein Task-Lauf → portable JSON mit Phasen + EXECUTION-Metadaten, ohne Cloud-Collector. **(2026-07-24)**
 
 #### C2 — MCP härten (ohne Subagent-Expansion) (GRÜN/ROT)
 

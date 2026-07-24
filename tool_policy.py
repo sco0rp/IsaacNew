@@ -17,7 +17,7 @@ class ToolDecisionReason(Enum):
 @dataclass(frozen=True)
 class ToolPolicy:
     allow_tools: bool | None = None
-    supported_task_types: tuple[str, ...] = ("chat", "search", "research")
+    supported_task_types: tuple[str, ...] = ("chat", "search", "research", "code", "file", "plan")
     require_nonempty_prompt: bool = True
 
     def resolved_allow_tools(self, task_allow_tools: bool) -> bool:

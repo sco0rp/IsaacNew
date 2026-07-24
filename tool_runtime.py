@@ -273,6 +273,18 @@ async def _run_registry_tool(tool, prompt: str) -> dict:
             reg.record(tool.tool_id, result.ok, "browser-chat-run")
             return {"ok": result.ok, "content": result.content, "error": result.error, "via": "browser_chat"}
 
+        if tool.kind == "bridge":
+            from tool_bridge import run_bridge
+
+            bridge_id = str((tool.metadata or {}).get("bridge") or tool.name or "")
+            result = await run_bridge(bridge_id, prompt)
+            ok = bool(result.get("ok"))
+            reg.record(tool.tool_id, ok, f"bridge-run:{result.get('via', bridge_id)}")
+            # Normalize content/output for executor context blocks
+            if "content" not in result and result.get("output") is not None:
+                result = {**result, "content": result.get("output")}
+            return result
+
         return {"ok": False, "error": f"Nicht unterstützter Tooltyp: {tool.kind}"}
     except Exception as e:
         reg.record(tool.tool_id, False, f"run-error: {e}")

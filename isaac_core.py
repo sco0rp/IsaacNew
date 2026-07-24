@@ -2523,7 +2523,13 @@ class IsaacKernel:
         self, user_input: str, intent: str, interaction_class: str, retrieval_ctx: dict[str, Any]
     ) -> Strategy:
         cfg = getattr(self, "cfg", None) or get_config()
-        allow_tools = intent in (Intent.SEARCH, Intent.RESEARCH)
+        allow_tools = intent in (
+            Intent.SEARCH,
+            Intent.RESEARCH,
+            Intent.CODE,
+            Intent.FILE,
+            Intent.AGENT,
+        )
         allow_followup = interaction_class not in ("SHORT_CLARIFICATION",)
         allow_provider_switch = True
         allow_agent_companions = False
@@ -2541,6 +2547,10 @@ class IsaacKernel:
 
         if intent == Intent.CHAT:
             allow_tools = False
+            # Explicit bridge markers in free chat (github:/fetch:)
+            tl = (user_input or "").lower().strip()
+            if tl.startswith(("github:", "gh:", "fetch:", "web_fetch:", "web fetch:")):
+                allow_tools = True
         if "tool_overreach_risk" in risk_tags and intent == Intent.CHAT:
             allow_tools = False
         if "no auto-agreement" in pref_text or "kein auto agreement" in pref_text:
@@ -2866,6 +2876,16 @@ async def main():
         format  = "[%(asctime)s] %(levelname)-7s %(name)s – %(message)s",
         datefmt = "%H:%M:%S",
     )
+
+    # Secrets: env + cli_auth_backup → SecretsStore (never logged as values)
+    try:
+        from secrets_bootstrap import bootstrap_secrets
+        from tool_bridge import ensure_bridge_tools_registered
+
+        bootstrap_secrets()
+        ensure_bridge_tools_registered()
+    except Exception as e:
+        logging.getLogger("Isaac").warning("Secrets/tool-bridge bootstrap skipped: %s", e)
 
     # Optional Sentry AI monitoring (no-op without SENTRY_DSN)
     try:

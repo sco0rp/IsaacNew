@@ -8,7 +8,11 @@ __pycache__/
 .env.local
 .env.backup*
 .venv/
+# All runtime/secrets data — never commit credentials (entire data/)
 data/
+*.pem
+*.key
+!*.key.example
 archives/
 archive/
 package/

@@ -138,6 +138,9 @@ class Strategy:
     allow_tools: bool = True
     allow_followup: bool = True
     allow_provider_switch: bool = True
+    # Companion agents (Grok/OI/Letta) — opt-in via strategy + ISAAC_AGENT_AUTO_SELECT
+    allow_agent_companions: bool = False
+    preferred_agent: str = ""  # "grok" | "open_interpreter" | "letta" | ""
     style_note: str = ""
 
     def as_dict(self) -> dict[str, Any]:
@@ -145,6 +148,8 @@ class Strategy:
             "allow_tools": self.allow_tools,
             "allow_followup": self.allow_followup,
             "allow_provider_switch": self.allow_provider_switch,
+            "allow_agent_companions": self.allow_agent_companions,
+            "preferred_agent": self.preferred_agent,
             "style_note": self.style_note,
         }
 

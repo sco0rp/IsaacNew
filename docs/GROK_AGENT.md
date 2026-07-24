@@ -19,6 +19,29 @@ Optional mit voller Tool-Autonomie:
 grok -p "…" --always-approve   # nur wenn ISAAC_GROK_AGENT_ALWAYS_APPROVE=1
 ```
 
+## Auto-Auswahl durch Isaac (ohne Prefix)
+
+Wenn **beide** Flags an sind, darf Isaac bei geeigneten Tasks Grok (oder OI/Letta) **selbst** wählen und das Ergebnis als `[Agent-Kontext: …]` in den Task-Prompt legen:
+
+| Env | Default | Bedeutung |
+|-----|---------|-----------|
+| `ISAAC_AGENT_AUTO_SELECT` | `0` | Master: Strategy darf Companions wählen |
+| `ISAAC_AGENT_TIMEOUT` | `180` | Timeout pro Auto-Run |
+| `ISAAC_AGENT_PRIMARY` | `0` | (experimentell) Agent-Antwort primär |
+
+**Wann (Strategy):** Intent CODE / FILE / AGENT / RESEARCH, oder CHAT mit Code-Markern.  
+**Wann nicht:** Greeting, Danke, kurze Klärung, reiner Smalltalk, `allow_agent_companions=False`.
+
+Pipeline:
+
+```text
+classify → retrieve → strategy(allow_agent_companions)
+        → agent_select → optional grok -p …
+        → [Agent-Kontext] in Task-Prompt → execute (Relay)
+```
+
+DecisionTrace: `SELECTION/companion_agent` + `CONTEXT_INTEGRATION/agent_context_injected`.
+
 ## Isaac-Integration (default OFF)
 
 | Env | Default | Bedeutung |

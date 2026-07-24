@@ -270,9 +270,42 @@ class IsaacKernel:
     # ── Haupt-Verarbeitung ────────────────────────────────────────────────────
     async def process(self, user_input: str,
                       sudo_token: Optional[str] = None) -> str:
-        if not user_input.strip():
+        """Owner-facing entry: wraps a Sentry performance transaction when enabled."""
+        if not (user_input or "").strip():
             return ""
+        from contextlib import nullcontext
 
+        try:
+            from isaac_sentry import (
+                add_breadcrumb,
+                is_enabled,
+                request_transaction,
+                session_conversation_id,
+                set_conversation_id,
+            )
+
+            if is_enabled():
+                conv = session_conversation_id()
+                if conv:
+                    set_conversation_id(conv)
+                add_breadcrumb(
+                    "process_start",
+                    category="kernel",
+                    level="info",
+                    input=(user_input or "")[:120],
+                )
+                with request_transaction(
+                    name="isaac.process",
+                    op="function",
+                    user_input=user_input,
+                ):
+                    return await self._process_body(user_input, sudo_token=sudo_token)
+        except Exception as exc:
+            log.debug("sentry process wrapper: %s", exc)
+        return await self._process_body(user_input, sudo_token=sudo_token)
+
+    async def _process_body(self, user_input: str,
+                            sudo_token: Optional[str] = None) -> str:
         t_start = time.perf_counter()
         timing: dict[str, float] = {}
 

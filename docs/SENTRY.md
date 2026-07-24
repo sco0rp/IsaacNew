@@ -32,14 +32,31 @@ SENTRY_PROJECT=isaac-web
 SENTRY_TRACES_SAMPLE_RATE=0.1   # production default in code as well
 ```
 
+## Features enabled (Python kernel)
+
+| Feature | Env / option | Default |
+|---------|--------------|---------|
+| Errors | `SENTRY_ERROR_SAMPLE_RATE` | 1.0 |
+| **Tracing** | `SENTRY_TRACES_SAMPLE_RATE` | **1.0** |
+| **Profiling** | `SENTRY_PROFILES_SAMPLE_RATE` | = traces |
+| Continuous profile session | `SENTRY_PROFILE_SESSION_SAMPLE_RATE` | 1.0 |
+| Structured logs | `SENTRY_ENABLE_LOGS` | 1 |
+| Metrics | `SENTRY_ENABLE_METRICS` | 1 |
+| AI spans (`gen_ai.*`) | `stream_gen_ai_spans` | on |
+| Prompt/output PII | `SENTRY_INCLUDE_PROMPTS` | 1 |
+| Stacktraces on messages | `SENTRY_ATTACH_STACKTRACE` | 1 |
+| Integrations | Logging, asyncio, aiohttp, threading, stdlib, … | auto |
+
+Root transaction per turn: `isaac.process` (see `request_transaction`).
+
 ## Sample rates
 
-| Environment | Default traces rate |
-|-------------|---------------------|
-| development | **1.0** (full visibility) |
-| production / free-cloud | **0.1** |
+Full capture is the default for Tracing (user-requested). To reduce volume/cost:
 
-Override anytime with `SENTRY_TRACES_SAMPLE_RATE`.
+```bash
+SENTRY_TRACES_SAMPLE_RATE=0.1
+SENTRY_PROFILES_SAMPLE_RATE=0.1
+```
 
 ## Alerts (configured)
 

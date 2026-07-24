@@ -1,17 +1,28 @@
 """
-Isaac – Optional Sentry AI Agent Monitoring
-=============================================
-No-op when SENTRY_DSN is unset. Manual gen_ai spans for the custom aiohttp
-relay (no OpenAI/Anthropic SDK auto-integration).
+Isaac – Full Sentry observability (errors, traces, profiles, logs, metrics, gen_ai)
+
+No-op when SENTRY_DSN is unset. Manual gen_ai spans for the custom aiohttp relay.
 
 Env:
-  SENTRY_DSN                 — enable Sentry (required)
-  SENTRY_TRACES_SAMPLE_RATE  — optional override (default: 1.0 dev, 0.1 production)
-  SENTRY_ENVIRONMENT         — default development / ISAAC_ENV / production
-  SENTRY_RELEASE             — default isaac@5.3
-  SENTRY_INCLUDE_PROMPTS     — default 1 (owner-confirmed PII capture)
+  SENTRY_DSN                      — enable Sentry (required)
+  SENTRY_TRACES_SAMPLE_RATE       — default 1.0 (full tracing)
+  SENTRY_PROFILES_SAMPLE_RATE     — default same as traces (or 1.0)
+  SENTRY_PROFILE_SESSION_SAMPLE_RATE — continuous profiling session (default 1.0)
+  SENTRY_ERROR_SAMPLE_RATE        — default 1.0
+  SENTRY_ENVIRONMENT              — development / production
+  SENTRY_RELEASE                  — default isaac@5.3
+  SENTRY_INCLUDE_PROMPTS          — default 1 (PII for AI spans)
+  SENTRY_ENABLE_LOGS              — default 1
+  SENTRY_ENABLE_METRICS           — default 1
+  SENTRY_DEBUG                    — default 0
+  SENTRY_ATTACH_STACKTRACE        — default 1
 
-Docs: https://docs.sentry.io/platforms/python/tracing/instrumentation/custom-instrumentation/ai-agents-module/
+Docs:
+  https://docs.sentry.io/platforms/python/
+  https://docs.sentry.io/platforms/python/tracing/
+  https://docs.sentry.io/platforms/python/profiling/
+  https://docs.sentry.io/platforms/python/logs/
+  AI: custom-instrumentation/ai-agents-module
 """
 
 from __future__ import annotations
@@ -37,6 +48,16 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 def is_enabled() -> bool:
     return _initialized
 
@@ -45,8 +66,67 @@ def include_prompts() -> bool:
     return _include_prompts and _initialized
 
 
+def _build_integrations() -> list[Any]:
+    """Enable as many first-party integrations as are installed."""
+    integrations: list[Any] = []
+    try:
+        from sentry_sdk.integrations.logging import LoggingIntegration
+
+        integrations.append(
+            LoggingIntegration(
+                level=logging.INFO,
+                event_level=logging.ERROR,
+            )
+        )
+    except Exception:
+        pass
+
+    # Stdlib / asyncio / threading — usually always present
+    for mod_path, cls_name in (
+        ("sentry_sdk.integrations.stdlib", "StdlibIntegration"),
+        ("sentry_sdk.integrations.excepthook", "ExcepthookIntegration"),
+        ("sentry_sdk.integrations.dedupe", "DedupeIntegration"),
+        ("sentry_sdk.integrations.atexit", "AtexitIntegration"),
+        ("sentry_sdk.integrations.modules", "ModulesIntegration"),
+        ("sentry_sdk.integrations.argv", "ArgvIntegration"),
+        ("sentry_sdk.integrations.threading", "ThreadingIntegration"),
+        ("sentry_sdk.integrations.asyncio", "AsyncioIntegration"),
+    ):
+        try:
+            import importlib
+
+            mod = importlib.import_module(mod_path)
+            cls = getattr(mod, cls_name)
+            if cls_name == "ThreadingIntegration":
+                try:
+                    integrations.append(cls(propagate_scope=True))
+                except TypeError:
+                    integrations.append(cls())
+            else:
+                integrations.append(cls())
+        except Exception:
+            continue
+
+    # Optional HTTP stacks used by Isaac
+    for mod_path, cls_name, kwargs in (
+        ("sentry_sdk.integrations.aiohttp", "AioHttpIntegration", {}),
+        ("sentry_sdk.integrations.httpx", "HttpxIntegration", {}),
+        ("sentry_sdk.integrations.flask", "FlaskIntegration", {}),
+    ):
+        try:
+            import importlib
+
+            mod = importlib.import_module(mod_path)
+            cls = getattr(mod, cls_name)
+            integrations.append(cls(**kwargs) if kwargs else cls())
+        except Exception:
+            continue
+
+    return integrations
+
+
 def init_sentry() -> bool:
-    """Initialize Sentry once. Safe to call repeatedly. Returns True if active."""
+    """Initialize Sentry once with tracing, profiling, logs, metrics, AI spans."""
     global _initialized, _include_prompts, _session_conversation_id
 
     if _initialized:
@@ -54,7 +134,7 @@ def init_sentry() -> bool:
 
     dsn = (os.getenv("SENTRY_DSN") or "").strip()
     if not dsn:
-        log.info("Sentry: SENTRY_DSN not set — AI monitoring disabled")
+        log.info("Sentry: SENTRY_DSN not set — observability disabled")
         return False
 
     try:
@@ -71,32 +151,83 @@ def init_sentry() -> bool:
         or ("production" if _env_bool("ISAAC_FREE_CLOUD", False) else "development")
     ).strip() or "development"
 
-    # Production default 0.1 (cost/volume); full sample in development unless overridden
-    default_rate = "0.1" if environment.lower() in {"production", "prod", "live"} else "1.0"
-    try:
-        sample_rate = float(
-            os.getenv("SENTRY_TRACES_SAMPLE_RATE", default_rate) or default_rate
-        )
-    except ValueError:
-        sample_rate = float(default_rate)
-    sample_rate = max(0.0, min(1.0, sample_rate))
+    # Full tracing by default (user-requested); override via env for cost control
+    traces = max(0.0, min(1.0, _env_float("SENTRY_TRACES_SAMPLE_RATE", 1.0)))
+    profiles = max(
+        0.0,
+        min(1.0, _env_float("SENTRY_PROFILES_SAMPLE_RATE", traces)),
+    )
+    profile_session = max(
+        0.0,
+        min(1.0, _env_float("SENTRY_PROFILE_SESSION_SAMPLE_RATE", 1.0)),
+    )
+    error_rate = max(0.0, min(1.0, _env_float("SENTRY_ERROR_SAMPLE_RATE", 1.0)))
 
     init_kwargs: dict[str, Any] = {
         "dsn": dsn,
-        "traces_sample_rate": sample_rate,
-        "send_default_pii": _include_prompts,
-        # Standalone gen_ai envelopes (default True on SDK ≥2.60; required for Conversations)
-        "stream_gen_ai_spans": True,
         "environment": environment,
         "release": os.getenv("SENTRY_RELEASE", "isaac@5.3"),
+        # Errors
+        "sample_rate": error_rate,
+        "attach_stacktrace": _env_bool("SENTRY_ATTACH_STACKTRACE", True),
+        "send_default_pii": _include_prompts,
+        "max_breadcrumbs": int(_env_float("SENTRY_MAX_BREADCRUMBS", 100)),
+        "debug": _env_bool("SENTRY_DEBUG", False),
+        # Tracing (Performance)
+        "enable_tracing": True,
+        "traces_sample_rate": traces,
+        "propagate_traces": True,
+        # AI agent spans as standalone envelopes
+        "stream_gen_ai_spans": True,
+        # Integrations
+        "integrations": _build_integrations(),
+        "default_integrations": True,
     }
 
-    try:
-        sentry_sdk.init(**init_kwargs)
-    except TypeError:
-        # Older SDK: drop unknown kwargs and retry
-        init_kwargs.pop("stream_gen_ai_spans", None)
-        sentry_sdk.init(**init_kwargs)
+    # Profiling (transaction + continuous session when supported)
+    init_kwargs["profiles_sample_rate"] = profiles
+    init_kwargs["profile_session_sample_rate"] = profile_session
+    init_kwargs["profile_lifecycle"] = os.getenv("SENTRY_PROFILE_LIFECYCLE", "trace")
+
+    # Structured logs + metrics (SDK 2.x)
+    if _env_bool("SENTRY_ENABLE_LOGS", True):
+        init_kwargs["enable_logs"] = True
+    if _env_bool("SENTRY_ENABLE_METRICS", True):
+        init_kwargs["enable_metrics"] = True
+
+    # Drop unknown options for older SDKs by progressive retry
+    optional_keys = [
+        "stream_gen_ai_spans",
+        "profile_session_sample_rate",
+        "profile_lifecycle",
+        "profiles_sample_rate",
+        "enable_logs",
+        "enable_metrics",
+        "enable_tracing",
+        "propagate_traces",
+    ]
+    while True:
+        try:
+            sentry_sdk.init(**init_kwargs)
+            break
+        except TypeError as exc:
+            msg = str(exc)
+            dropped = False
+            for key in list(optional_keys):
+                if key in msg or key in init_kwargs:
+                    if key in init_kwargs:
+                        init_kwargs.pop(key, None)
+                        optional_keys.remove(key) if key in optional_keys else None
+                        dropped = True
+                        log.debug("Sentry init: dropped unsupported option %s", key)
+                        break
+            if not dropped:
+                # Drop last optional still present
+                if optional_keys and optional_keys[0] in init_kwargs:
+                    init_kwargs.pop(optional_keys.pop(0), None)
+                    continue
+                log.warning("Sentry init failed: %s", exc)
+                return False
 
     _initialized = True
     _session_conversation_id = f"isaac-{uuid.uuid4().hex[:16]}"
@@ -105,13 +236,25 @@ def init_sentry() -> bool:
     owner = (os.getenv("ISAAC_OWNER") or "owner").strip() or "owner"
     try:
         sentry_sdk.set_user({"id": owner, "username": owner})
+        sentry_sdk.set_tag("service", "isaac-kernel")
+        sentry_sdk.set_tag("component", "kernel")
+        sentry_sdk.set_context(
+            "isaac",
+            {
+                "version": os.getenv("SENTRY_RELEASE", "isaac@5.3"),
+                "free_cloud": _env_bool("ISAAC_FREE_CLOUD", False),
+            },
+        )
     except Exception:
         pass
 
     log.info(
-        "Sentry AI monitoring active (traces_sample_rate=%s include_prompts=%s)",
-        sample_rate,
-        _include_prompts,
+        "Sentry full stack active (env=%s traces=%s profiles=%s errors=%s logs=%s)",
+        environment,
+        traces,
+        profiles,
+        error_rate,
+        init_kwargs.get("enable_logs", False),
     )
     return True
 
@@ -135,6 +278,78 @@ def set_conversation_id(conversation_id: str) -> None:
             sentry_sdk.set_tag("conversation_id", str(conversation_id)[:120])
         except Exception:
             pass
+
+
+@contextmanager
+def request_transaction(
+    *,
+    name: str = "isaac.process",
+    op: str = "function",
+    user_input: str = "",
+) -> Iterator[Any]:
+    """Root performance transaction for one kernel turn (enables full traces)."""
+    if not _initialized:
+        yield _NoopSpan()
+        return
+
+    import sentry_sdk
+
+    with sentry_sdk.start_transaction(op=op, name=name) as tx:
+        try:
+            if user_input:
+                tx.set_tag("input_preview", (user_input or "")[:80])
+                tx.set_data("isaac.input_chars", len(user_input or ""))
+            sentry_sdk.set_tag("transaction_name", name)
+        except Exception:
+            pass
+        yield tx
+
+
+def capture_exception(exc: BaseException, **scope_kwargs: Any) -> None:
+    if not _initialized:
+        return
+    try:
+        import sentry_sdk
+
+        if scope_kwargs:
+            with sentry_sdk.push_scope() as scope:
+                for k, v in scope_kwargs.items():
+                    scope.set_extra(k, v)
+                sentry_sdk.capture_exception(exc)
+        else:
+            sentry_sdk.capture_exception(exc)
+    except Exception:
+        pass
+
+
+def capture_message(message: str, level: str = "info", **tags: Any) -> None:
+    if not _initialized:
+        return
+    try:
+        import sentry_sdk
+
+        with sentry_sdk.push_scope() as scope:
+            for k, v in tags.items():
+                scope.set_tag(k, str(v)[:200])
+            sentry_sdk.capture_message(message, level=level)
+    except Exception:
+        pass
+
+
+def add_breadcrumb(message: str, category: str = "isaac", level: str = "info", **data: Any) -> None:
+    if not _initialized:
+        return
+    try:
+        import sentry_sdk
+
+        sentry_sdk.add_breadcrumb(
+            message=message[:500],
+            category=category,
+            level=level,
+            data={k: str(v)[:300] for k, v in data.items()},
+        )
+    except Exception:
+        pass
 
 
 def _messages_json(system: str, user_prompt: str) -> str:
@@ -176,10 +391,7 @@ def gen_ai_chat_span(
     prompt: str = "",
     agent_name: str = "Isaac",
 ) -> Iterator[Any]:
-    """
-    Manual gen_ai.chat span around a relay LLM call.
-    Yields a span-like object with set_data, or a no-op stub.
-    """
+    """Manual gen_ai.chat span around a relay LLM call."""
     if not _initialized:
         yield _NoopSpan()
         return
@@ -352,4 +564,10 @@ class _NoopSpan:
         return None
 
     def set_attribute(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+    def set_tag(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+    def set_status(self, *args: Any, **kwargs: Any) -> None:
         return None

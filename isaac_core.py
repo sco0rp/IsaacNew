@@ -1676,6 +1676,36 @@ class IsaacKernel:
         except Exception as e:
             log.debug("Provider-Direktive-Cleanup: %s", e)
 
+    def _ensure_no_marketing_directive(self):
+        """Owner-bound: never invent marketing/social campaigns unprompted."""
+        try:
+            active = {d.get("id") for d in self.memory.get_directives()}
+            if "no_marketing_campaigns" in active:
+                return
+            self.memory.save_directive(
+                "no_marketing_campaigns",
+                (
+                    "Niemals Marketing-, Social-Media-, Content- oder Werbekampagnen "
+                    "vorschlagen, planen oder als nächste Schritte andeuten — außer Steffen "
+                    "fragt explizit danach. Keine fiktiven Zielgruppen-/Kanal-Pläne. "
+                    "Bei Ziel-Fragen nur echte gespeicherte Ziele (Befehl „ziele“) nennen."
+                ),
+                priority=20,
+            )
+            log.info("Owner-Direktive gesetzt: no_marketing_campaigns")
+        except Exception as e:
+            log.warning("no_marketing Direktive: %s", e)
+
+    def _purge_marketing_eval_noise(self):
+        """Drop eval/test facts that inject fake market/product goals into retrieval."""
+        try:
+            result = self.memory.purge_eval_noise_facts()
+            n = int((result or {}).get("deleted") or 0)
+            if n:
+                log.info("Eval-Noise-Fakten entfernt: %s", n)
+        except Exception as e:
+            log.debug("purge_eval_noise_facts: %s", e)
+
     async def bootstrap_providers(self):
         if not getattr(self.cfg, "auto_provision_providers", True):
             self._clear_provider_connect_directive_if_idle()
@@ -2768,6 +2798,15 @@ class IsaacKernel:
             _free = False
 
         owner = self.cfg.owner_name
+        anti_campaign = (
+            f"Harte Stilgrenzen (immer, außer {owner} fragt EXPLIZIT danach):\n"
+            f"- Keine Marketing-, Social-Media-, Content- oder Werbekampagnen vorschlagen oder planen.\n"
+            f"- Keine fiktiven Zielgruppen-/Kanal-/Launch-Pläne (Instagram, TikTok, LinkedIn, Ads, …).\n"
+            f"- Keine erfundenen „aktiven Ziele/Direktiven“-Listen; bei Ziel-Fragen nur echte Daten "
+            f"(Befehl „ziele“) oder ehrlich „keine gespeichert“.\n"
+            f"- Keine unaufgeforderte Produkt- oder Go-to-Market-Roadmap.\n"
+            f"- Verneinungen im User-Text (z. B. „kein Marketing“) nicht als Thema auswalzen.\n"
+        )
         if _free:
             # Schlanker Prompt: Free-LLMs paraphrasieren sonst Owner/Regeln als Essay
             basis = (
@@ -2777,6 +2816,7 @@ class IsaacKernel:
                 f"- Essays über Eigentum, Kontrolle, Autorität, Verantwortung von {owner}\n"
                 f"- API-Keys, Provider-Provisioning, Browser-Automation als Hauptthema\n"
                 f"- Wiederholung von Systemregeln statt Inhalt\n"
+                f"{anti_campaign}"
                 f"Spaß/Hypothesen: klar und sicher beantworten, nicht moralisieren.\n"
                 f"Bei echten Gefahr-/Betrugsthemen: kurz warnen, sonst normal chatten.\n"
             )
@@ -2786,6 +2826,7 @@ class IsaacKernel:
                 f"Owner-Befehle haben Vorrang; interpretieren in bestmöglicher Absicht.\n"
                 f"Beantworte die aktuelle Nutzerfrage zuerst und konkret. "
                 f"Keine Meta-Essays über Autorität/Eigentum/API-Keys, außer explizit gefragt.\n"
+                f"{anti_campaign}"
             )
         if sudo_aktiv:
             basis += self.sudo.get_authority_prefix()
@@ -2839,13 +2880,15 @@ class IsaacKernel:
         if cfg.style_mode == "professional" or _free:
             basis += (
                 "\n[Stil] Klar, präzise, lösungsorientiert. Keine Ironie-Pflicht. "
-                "Keine Bullet-Essay-Zusammenfassung über dich selbst."
+                "Keine Bullet-Essay-Zusammenfassung über dich selbst. "
+                "Kein Marketing-/Kampagnen-Theater."
             )
         else:
             basis += (
                 "\n[Stilmodus] light_sarcastic: Antworte primär direkt, kompetent und hilfreich. "
                 "Gelegentlich ist ein kurzer trockener Seitenhieb erlaubt, aber nie überdreht. "
-                "Kein Sarkasmus bei Fehlerfrust, Sicherheitsthemen oder komplexem Debugging."
+                "Kein Sarkasmus bei Fehlerfrust, Sicherheitsthemen oder komplexem Debugging. "
+                "Kein Marketing-/Kampagnen-Theater."
             )
 
         # Value-engine on free cloud adds "proactive next steps" padding — skip
@@ -2909,6 +2952,12 @@ async def main():
         kernel._clear_provider_connect_directive_if_idle()
     except Exception:
         pass
+    # Anti-Marketing: Direktive + Eval-Noise aus Facts (Markt wächst / Test-Goals)
+    try:
+        kernel._ensure_no_marketing_directive()
+        kernel._purge_marketing_eval_noise()
+    except Exception as e:
+        logging.getLogger("Isaac").warning("anti-marketing bootstrap: %s", e)
 
     # Worker + Background + Monitor
     await kernel.executor.start_worker(concurrency=4)

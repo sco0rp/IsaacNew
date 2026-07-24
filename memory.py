@@ -544,6 +544,99 @@ class Memory:
             ).fetchall()
         return {r["key"]: r["value"] for r in rows}
 
+    def delete_facts_matching(
+        self,
+        *,
+        key_prefix: str = "",
+        value_contains: str = "",
+        key_contains: str = "",
+    ) -> int:
+        """Delete facts by key prefix and/or substring match. Returns rows deleted."""
+        key_prefix = (key_prefix or "").strip()
+        value_contains = (value_contains or "").strip().lower()
+        key_contains = (key_contains or "").strip().lower()
+        if not key_prefix and not value_contains and not key_contains:
+            return 0
+        with _conn() as con:
+            rows = con.execute("SELECT key, value FROM facts").fetchall()
+            to_del: list[str] = []
+            for r in rows:
+                k = (r["key"] or "")
+                v = (r["value"] or "")
+                if key_prefix and not k.startswith(key_prefix):
+                    continue
+                if key_contains and key_contains not in k.lower():
+                    if not value_contains:
+                        continue
+                if value_contains and value_contains not in v.lower():
+                    if key_contains and key_contains in k.lower():
+                        pass
+                    elif key_prefix and k.startswith(key_prefix):
+                        # key prefix alone is enough when no value filter mismatch was required
+                        if value_contains and value_contains not in v.lower():
+                            continue
+                    else:
+                        continue
+                # refined: if only value_contains
+                if value_contains and not key_prefix and not key_contains:
+                    if value_contains not in v.lower() and value_contains not in k.lower():
+                        continue
+                    to_del.append(k)
+                    continue
+                if key_prefix and k.startswith(key_prefix):
+                    if value_contains and value_contains not in v.lower() and value_contains not in k.lower():
+                        continue
+                    to_del.append(k)
+                    continue
+                if key_contains and key_contains in k.lower():
+                    to_del.append(k)
+            for k in to_del:
+                con.execute("DELETE FROM facts WHERE key=?", (k,))
+            return len(to_del)
+
+    def purge_eval_noise_facts(self) -> dict:
+        """Remove known test/eval goal-progress noise that pollutes retrieval."""
+        with _conn() as con:
+            rows = con.execute("SELECT key, value FROM facts").fetchall()
+            noise_markers = (
+                "markt wächst",
+                "markt waechst",
+                "mobile oder desktop",
+                "prototyp ist fertig und getestet",
+            )
+            to_del: list[str] = []
+            for r in rows:
+                k = (r["key"] or "")
+                v = (r["value"] or "").lower()
+                kl = k.lower()
+                if k.startswith("goal_latest.") or k.startswith("goal_progress."):
+                    if v.strip() in {"again", "ok", "test", "timeout"} or any(m in v for m in noise_markers):
+                        to_del.append(k)
+                        continue
+                    if "markt" in v and "priorisieren" in v:
+                        to_del.append(k)
+                        continue
+                    if "temporal_test" in kl:
+                        to_del.append(k)
+                        continue
+                if k.startswith("goal_answer.") and (
+                    "desktop oder mobile" in v or "budget" in v or "max 200" in v
+                ):
+                    to_del.append(k)
+                    continue
+                if k.startswith("goal_digest."):
+                    # digest snapshots from evals/tests often re-inject fake goals
+                    if "digest ziel" in v or "markt" in v:
+                        to_del.append(k)
+                        continue
+                if any(m in v for m in noise_markers) and (
+                    k.startswith("goal_") or "goal" in kl
+                ):
+                    to_del.append(k)
+            for k in set(to_del):
+                con.execute("DELETE FROM facts WHERE key=?", (k,))
+            return {"deleted": len(set(to_del)), "keys": sorted(set(to_del))[:30]}
+
     # ── Direktiven ────────────────────────────────────────────────────────────
     def save_directive(self, directive_id: str, text: str,
                        priority: int = 10):

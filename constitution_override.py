@@ -24,6 +24,42 @@ NON_OVERRIDABLE_BLOCKS = frozenset({
     "constitution_not_self_editable",
 })
 
+# Kanonische destruktive Shell-Fragmente (ROT) — geteilt von computer_use + tool_runtime.
+# Konkreter Gap (2026-07-24): package-install Pfade waren in tool_runtime nicht destruktiv.
+DESTRUCTIVE_SHELL_FRAGMENTS: tuple[str, ...] = (
+    "sudo ",
+    "rm -rf",
+    "rm -r /",
+    "mkfs.",
+    "mkfs ",
+    " dd ",
+    "dd if=",
+    "chmod 777",
+    "curl ",
+    "wget ",
+    "> /dev/",
+    "| sh",
+    "| bash",
+    # package / system mutate — ohne Owner blocken
+    "apt install",
+    "apt-get install",
+    "aptitude install",
+    "pip install",
+    "pip3 install",
+    "npm install -g",
+    "apk add",
+    "pkg install",
+    "pacman -s",
+    "dnf install",
+    "yum install",
+)
+
+
+def is_destructive_shell_text(text: str) -> bool:
+    """True wenn Text destruktive Shell-/Package-Muster enthält."""
+    lowered = f" {(text or '').strip().lower()} "
+    return any(fragment in lowered for fragment in DESTRUCTIVE_SHELL_FRAGMENTS)
+
 
 @dataclass(frozen=True)
 class OwnerOverrideContext:

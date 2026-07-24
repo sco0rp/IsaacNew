@@ -507,12 +507,12 @@ def constitution_gate_for_tool(
         "risk": "high" if kind in {"code", "integration", "shell"} or shell_like else "normal",
     }
     if shell_like:
-        # Destruktive Shell-Muster aus dem Prompt/Tool-Namen erkennen.
-        destructive_tokens = (
-            "rm -rf", "sudo ", "mkfs", "dd if=", "chmod 777", "| bash", "| sh",
-            "curl ", "wget ",
+        # Destruktive Shell-/Package-Muster (kanonisch in constitution_override).
+        from constitution_override import is_destructive_shell_text
+
+        metadata["destructive"] = is_destructive_shell_text(prompt_l) or is_destructive_shell_text(
+            f"{name} {mcp_name}"
         )
-        metadata["destructive"] = any(tok in prompt_l for tok in destructive_tokens)
         try:
             from config import is_owner_equivalent_mode
             metadata["owner_approved"] = bool(is_owner_equivalent_mode())

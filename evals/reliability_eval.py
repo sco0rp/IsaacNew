@@ -44,6 +44,34 @@ async def _run_reliability() -> dict:
     with patch.object(exe, "_execute_ai", side_effect=_flaky_ai):
         await exe._execute(exe.get_task(chat_tid))
 
+    from task_checkpoint import (
+        CheckpointState,
+        is_preferred_transition,
+        is_valid_transition,
+        normalize_state,
+        transition_note,
+    )
+    from decision_trace import DecisionTrace, TracePhase
+
+    # Soft transition graph + portable trace export (consolidate harness)
+    soft_ok = is_valid_transition(
+        CheckpointState.PLANNING, CheckpointState.TOOL_PENDING, strict=False
+    ) and is_preferred_transition(
+        CheckpointState.PLANNING, CheckpointState.EVALUATING
+    )
+    soft_invalid = not is_valid_transition(CheckpointState.PLANNING, "bogus_state")
+    note = transition_note("tool_running", CheckpointState.EVALUATING)
+    normalized = normalize_state("tool_running") == CheckpointState.TOOL_PENDING
+
+    trace = DecisionTrace()
+    trace.add(TracePhase.EVALUATION, "scored", {"score_total": 8.5})
+    portable = trace.to_portable_export(request_id="eval-reliability-trace")
+    portable_ok = (
+        portable.get("schema") == "isaac.decision_trace.portable_v1"
+        and portable.get("entries")
+        and portable["entries"][0]["phase"] == "evaluation"
+    )
+
     cases = [
         {"name": "checkpoint_written", "ok": bool(cp and cp.get("state_name") == "tool_running"), "detail": cp or {}},
         {"name": "task_resumable", "ok": bool(ok_resume and task2 and task2.status == TaskStatus.QUEUED), "detail": task2.to_dict() if task2 else {}},
@@ -51,6 +79,21 @@ async def _run_reliability() -> dict:
             "name": "interrupted_chat_resume_completes",
             "ok": chat_resumable and exe.get_task(chat_tid).status == TaskStatus.DONE,
             "detail": {"calls": calls["ai"], "status": exe.get_task(chat_tid).status.value},
+        },
+        {
+            "name": "checkpoint_soft_transitions",
+            "ok": bool(
+                soft_ok
+                and soft_invalid
+                and normalized
+                and ("preferred" in note or "soft_ok" in note)
+            ),
+            "detail": {"note": note, "soft_ok": soft_ok, "soft_invalid": soft_invalid},
+        },
+        {
+            "name": "decision_trace_portable_export",
+            "ok": portable_ok,
+            "detail": {"schema": portable.get("schema"), "phases": [e["phase"] for e in portable.get("entries", [])]},
         },
     ]
     passed = sum(1 for c in cases if c["ok"])

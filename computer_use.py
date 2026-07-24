@@ -35,19 +35,9 @@ S8_TERMUX_BRIDGE_HINT = (
     "  3) bash scripts/setup_termux_bridge.sh\n"
     "  4) Isaac neu starten, dann: agent: diagnose"
 )
-BLOCKED_SHELL_FRAGMENTS = (
-    "sudo ",
-    "rm -rf",
-    "rm -r /",
-    "mkfs.",
-    " dd ",
-    "chmod 777",
-    "curl ",
-    "wget ",
-    "> /dev/",
-    "| sh",
-    "| bash",
-)
+# Alias auf kanonische ROT-Liste (inkl. Package-Install) — eine Quelle der Wahrheit.
+from constitution_override import DESTRUCTIVE_SHELL_FRAGMENTS as BLOCKED_SHELL_FRAGMENTS
+from constitution_override import is_destructive_shell_text
 
 
 @dataclass(frozen=True)
@@ -137,8 +127,7 @@ def screenshot_dir() -> Path:
 
 
 def _is_destructive_shell(command: str) -> bool:
-    lowered = f" {(command or '').strip().lower()} "
-    return any(fragment in lowered for fragment in BLOCKED_SHELL_FRAGMENTS)
+    return is_destructive_shell_text(command)
 
 
 def _blocked_shell(command: str) -> Optional[str]:

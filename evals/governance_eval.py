@@ -69,6 +69,28 @@ def _run_cases() -> list[dict]:
         "detail": constitution_block.get("blocked_by", []),
     })
 
+    # Konkreter Boundary-Gap: package install via shell tool without owner
+    from tool_runtime import constitution_gate_for_tool
+    from constitution_override import is_destructive_shell_text, DESTRUCTIVE_SHELL_FRAGMENTS
+
+    pkg_destructive = is_destructive_shell_text("apt install -y htop")
+    with patch("config.is_owner_equivalent_mode", return_value=False):
+        with patch("constitution_override.is_owner_equivalent_mode", return_value=False):
+            pkg_blocked = constitution_gate_for_tool(
+                {"kind": "shell", "name": "isaac.run_shell", "identifier": "shell-pkg"},
+                "shell: pip install requests",
+            )
+    cases.append({
+        "name": "package_shell_marked_destructive",
+        "ok": bool(pkg_destructive and any("pip install" in f for f in DESTRUCTIVE_SHELL_FRAGMENTS)),
+        "detail": {"pkg_destructive": pkg_destructive},
+    })
+    cases.append({
+        "name": "tool_runtime_blocks_package_shell_without_owner",
+        "ok": pkg_blocked is not None and not pkg_blocked.get("ok", True),
+        "detail": (pkg_blocked or {}).get("metadata") or pkg_blocked,
+    })
+
     # Phase 3.2.3 — Kernel-Routing nutzt dasselbe Verfassungs-Gate
     from isaac_core import IsaacKernel, Intent
 

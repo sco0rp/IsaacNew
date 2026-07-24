@@ -38,7 +38,9 @@ from task_checkpoint import (
     build_input_snapshot,
     build_result_snapshot,
     is_resumable_state,
+    is_valid_transition,
     normalize_state,
+    transition_note,
 )
 from task_tool_state import get_task_tool_state_store
 from low_complexity import ClassificationResult
@@ -1439,6 +1441,15 @@ class Executor:
         side_effect_refs: list | None = None,
         memory_refs: list | None = None,
     ) -> int:
+        # Soft transition check — log only, never block execution.
+        prev = getattr(task, "checkpoint_state", "") or ""
+        new_norm = normalize_state(state_name)
+        if prev and not is_valid_transition(prev, new_norm, strict=False):
+            log.warning(
+                "checkpoint soft-invalid transition task=%s %s",
+                task.id,
+                transition_note(prev, new_norm),
+            )
         input_snapshot = build_input_snapshot(task, current_prompt=current_prompt)
         cp_id = get_memory().save_task_checkpoint(
             task.id,

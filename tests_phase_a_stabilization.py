@@ -2326,6 +2326,37 @@ class TestTaskCheckpointing(unittest.TestCase):
         self.assertFalse(is_resumable_state(CheckpointState.DONE))
         self.assertEqual(normalize_state("tool_running"), CheckpointState.TOOL_PENDING)
 
+    def test_checkpoint_soft_transitions_preferred_and_invalid(self):
+        from task_checkpoint import (
+            CheckpointState,
+            is_preferred_transition,
+            is_valid_transition,
+            transition_note,
+        )
+
+        # Happy path
+        self.assertTrue(
+            is_preferred_transition(CheckpointState.PLANNING, CheckpointState.TOOL_PENDING)
+        )
+        self.assertTrue(
+            is_preferred_transition(CheckpointState.TOOL_PENDING, CheckpointState.EVALUATING)
+        )
+        self.assertTrue(
+            is_valid_transition(
+                CheckpointState.LEARNING_COMMIT, CheckpointState.DONE, strict=True
+            )
+        )
+        # Soft allows re-checkpoint; preferred graph forbids DONE -> PLANNING? soft allows
+        self.assertTrue(
+            is_valid_transition(CheckpointState.DONE, CheckpointState.PLANNING, strict=False)
+        )
+        self.assertFalse(
+            is_preferred_transition(CheckpointState.DONE, CheckpointState.PLANNING)
+        )
+        # Unknown state
+        self.assertFalse(is_valid_transition(CheckpointState.PLANNING, "not_a_state"))
+        self.assertIn("preferred", transition_note(CheckpointState.PLANNING, CheckpointState.EVALUATING))
+
     def test_checkpoint_writes_input_snapshot_with_current_prompt(self):
         from executor import get_executor, Task, TaskType, TaskStatus
         from memory import get_memory
@@ -4031,6 +4062,34 @@ class TestPhase4Connect(unittest.TestCase):
             )
         self.assertIsNotNone(blocked)
         self.assertFalse(blocked.get("ok", True))
+
+    def test_e2_tool_runtime_blocks_package_install_shell_without_owner(self):
+        """Konkreter Gap: apt/pip install muss wie destruktive Shell ohne Owner blocken."""
+        from tool_runtime import constitution_gate_for_tool
+
+        with patch("config.is_owner_equivalent_mode", return_value=False):
+            with patch("constitution_override.is_owner_equivalent_mode", return_value=False):
+                blocked = constitution_gate_for_tool(
+                    {
+                        "kind": "shell",
+                        "name": "isaac.run_shell",
+                        "identifier": "shell-pkg",
+                    },
+                    "agent: shell apt install -y htop",
+                )
+        self.assertIsNotNone(blocked)
+        self.assertFalse(blocked.get("ok", True))
+        meta = blocked.get("metadata") or {}
+        self.assertEqual(meta.get("source"), "constitution")
+
+    def test_e2_destructive_shell_fragments_shared_source(self):
+        from constitution_override import DESTRUCTIVE_SHELL_FRAGMENTS, is_destructive_shell_text
+        from computer_use import BLOCKED_SHELL_FRAGMENTS, _is_destructive_shell
+
+        self.assertIs(BLOCKED_SHELL_FRAGMENTS, DESTRUCTIVE_SHELL_FRAGMENTS)
+        self.assertTrue(is_destructive_shell_text("pip install evilpkg"))
+        self.assertTrue(_is_destructive_shell("apt-get install foo"))
+        self.assertFalse(is_destructive_shell_text("ls -la workspace"))
 
     def test_browser_safe_goto_falls_back_wait_until(self):
         """Navigation retries wait_until (no networkidle hang)."""

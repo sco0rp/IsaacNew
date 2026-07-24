@@ -79,6 +79,28 @@ def _routing_expectations() -> list[dict]:
             "allow_tools": False,
             "tool_eligible": False,
         },
+        # Status/Ziel: kein Greeting-Short-Circuit, keine opportunistischen Tools
+        {
+            "id": "H",
+            "input": "Status",
+            "intent": Intent.STATUS,
+            "allow_tools": False,
+            "tool_eligible": False,
+        },
+        {
+            "id": "I",
+            "input": "Ziel: Kernel stabil halten",
+            "intent": Intent.GOAL_SET,
+            "allow_tools": False,
+            "tool_eligible": False,
+        },
+        {
+            "id": "J",
+            "input": "ziele",
+            "intent": Intent.GOAL_LIST,
+            "allow_tools": False,
+            "tool_eligible": False,
+        },
     ]
 
 
@@ -202,10 +224,64 @@ def _evaluation_trace_cases() -> list[dict]:
     ]
 
 
+def _portable_and_checkpoint_graph_cases() -> list[dict]:
+    """Consolidate: portable trace export + soft checkpoint preferred path."""
+    from decision_trace import DecisionTrace, TracePhase
+    from task_checkpoint import (
+        CheckpointState,
+        is_preferred_transition,
+        is_valid_transition,
+        normalize_state,
+    )
+
+    trace = DecisionTrace()
+    for phase, event in (
+        (TracePhase.GOVERNANCE, "gate"),
+        (TracePhase.CLASSIFICATION, "classified"),
+        (TracePhase.RETRIEVAL, "context_built"),
+        (TracePhase.STRATEGY, "selected"),
+        (TracePhase.MOTIVATION, "tick"),
+        (TracePhase.EXECUTION, "done"),
+        (TracePhase.EVALUATION, "scored"),
+        (TracePhase.LEARNING, "recorded"),
+    ):
+        trace.add(phase, event, {})
+    portable = trace.to_portable_export(request_id="replay-portable-1")
+    phases = [e["phase"] for e in portable.get("entries", [])]
+    preferred_chain = all(
+        [
+            is_preferred_transition(CheckpointState.PLANNING, CheckpointState.TOOL_PENDING),
+            is_preferred_transition(CheckpointState.TOOL_PENDING, CheckpointState.EVALUATING),
+            is_preferred_transition(CheckpointState.EVALUATING, CheckpointState.LEARNING_COMMIT),
+            is_preferred_transition(CheckpointState.LEARNING_COMMIT, CheckpointState.DONE),
+        ]
+    )
+    return [
+        {
+            "name": "portable_export_includes_motivation_and_evaluation",
+            "ok": (
+                portable.get("schema") == "isaac.decision_trace.portable_v1"
+                and "motivation" in phases
+                and "evaluation" in phases
+                and "learning" in phases
+            ),
+            "detail": {"phases": phases, "schema": portable.get("schema")},
+        },
+        {
+            "name": "checkpoint_preferred_happy_path",
+            "ok": preferred_chain
+            and normalize_state("resume_completed") == CheckpointState.PLANNING
+            and not is_valid_transition(CheckpointState.PLANNING, "nope"),
+            "detail": {"preferred_chain": preferred_chain},
+        },
+    ]
+
+
 def run() -> dict:
     cases = [_evaluate_routing_case(case) for case in _routing_expectations()]
     cases.extend(asyncio.run(_run_checkpoint_replay()))
     cases.extend(_evaluation_trace_cases())
+    cases.extend(_portable_and_checkpoint_graph_cases())
     passed = sum(1 for c in cases if c["ok"])
     return {"suite": "replay", "passed": passed, "total": len(cases), "cases": cases}
 

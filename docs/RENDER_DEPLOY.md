@@ -44,8 +44,20 @@
 | URL | Erwartung |
 |-----|-----------|
 | `/` | Isaac Dashboard |
-| `/healthz` | JSON `ok: true` |
+| `/healthz` | JSON `ok: true` (+ optional `git_commit` aus `RENDER_GIT_COMMIT`) |
 | WebSocket | automatisch über `/ws` (same origin) |
+
+### Deploy-Sync (lokal ↔ Repos ↔ Render)
+
+Pflicht für Agenten (siehe `AGENTS.md` § Deploy-Sync):
+
+```bash
+python3 scripts/check_deploy_sync.py
+python3 scripts/check_deploy_sync.py --strict   # exit 1 wenn out of sync
+python3 scripts/check_deploy_sync.py --json
+```
+
+Braucht `RENDER_API_KEY` (Secret). Optional: `RENDER_SERVICE_ID`, `ISAAC_REMOTE_FREE_URL`.
 
 **Hinweis Free-Plan:** Nach ~15 min Idle schläft der Service ein. Erster Request danach = Kaltstart (30–90 s).
 

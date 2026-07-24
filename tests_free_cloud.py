@@ -7,6 +7,21 @@ from unittest.mock import patch
 
 
 class TestFreeCloudHelpers(unittest.TestCase):
+    def test_deploy_git_commit_in_status(self):
+        import free_cloud as fc
+
+        with patch.dict(
+            os.environ,
+            {"RENDER_GIT_COMMIT": "3a9735086ec645889e6dd4bd57859f354d0d8ef2"},
+            clear=False,
+        ):
+            self.assertEqual(
+                fc.deploy_git_commit(),
+                "3a9735086ec645889e6dd4bd57859f354d0d8ef2",
+            )
+            st = fc.free_hosting_status()
+            self.assertEqual(st.get("git_commit"), "3a9735086ec645889e6dd4bd57859f354d0d8ef2")
+
     def test_defaults_apply_only_when_enabled(self):
         import free_cloud as fc
 

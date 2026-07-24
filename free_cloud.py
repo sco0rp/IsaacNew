@@ -6,6 +6,7 @@ and recommended free-tier defaults when ISAAC_FREE_CLOUD=1 (or equivalent).
 from __future__ import annotations
 
 import os
+import re
 from typing import Optional
 
 
@@ -106,7 +107,28 @@ def allow_local_llm() -> bool:
     return _truthy("ISAAC_ALLOW_LOCAL_LLM")
 
 
+def deploy_git_commit() -> Optional[str]:
+    """Best-effort git SHA of the running image (PaaS injects this).
+
+    Render: RENDER_GIT_COMMIT. Others may set GIT_COMMIT / SOURCE_VERSION.
+    """
+    for key in (
+        "RENDER_GIT_COMMIT",
+        "ISAAC_GIT_COMMIT",
+        "GIT_COMMIT",
+        "SOURCE_VERSION",
+        "COMMIT_SHA",
+    ):
+        raw = (os.getenv(key) or "").strip()
+        if raw and re.fullmatch(r"[0-9a-fA-F]{7,40}", raw):
+            return raw[:40]
+        if raw and len(raw) >= 7:
+            return raw[:40]
+    return None
+
+
 def free_hosting_status() -> dict:
+    git_commit = deploy_git_commit()
     return {
         "free_cloud": free_cloud_enabled(),
         "bind_host": bind_host(),
@@ -120,4 +142,8 @@ def free_hosting_status() -> dict:
             (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
         ),
         "has_openrouter_key": bool((os.getenv("OPENROUTER_API_KEY") or "").strip()),
+        # Visible on /healthz so agents can compare deploy vs git without API
+        "git_commit": git_commit,
+        "git_branch": (os.getenv("RENDER_GIT_BRANCH") or os.getenv("GIT_BRANCH") or "").strip()
+        or None,
     }

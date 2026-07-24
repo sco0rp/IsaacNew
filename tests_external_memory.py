@@ -1,7 +1,8 @@
-"""Regression tests for optional external memory adapters (Mem0/Cognee/Letta/OI)."""
+"""Regression tests for optional external memory adapters (Mem0/Cognee/Letta/OI/Grok)."""
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import unittest
@@ -16,6 +17,7 @@ class TestExternalMemoryConfig(unittest.TestCase):
             "ISAAC_COGNEE_ENABLED",
             "ISAAC_LETTA_ENABLED",
             "ISAAC_OPEN_INTERPRETER_ENABLED",
+            "ISAAC_GROK_AGENT_ENABLED",
             "ISAAC_EXTERNAL_MEMORY_WRITE",
         ]
         with patch.dict(os.environ, {k: "0" for k in keys}, clear=False):
@@ -31,6 +33,7 @@ class TestExternalMemoryConfig(unittest.TestCase):
             self.assertFalse(cfg.cognee_enabled)
             self.assertFalse(cfg.letta_enabled)
             self.assertFalse(cfg.open_interpreter_enabled)
+            self.assertFalse(cfg.grok_agent_enabled)
             self.assertFalse(cfg.write_enabled)
             bridge = get_external_memory_bridge(reset=True)
             self.assertFalse(bridge.any_enabled())
@@ -62,6 +65,7 @@ class TestExternalMemoryFailSoft(unittest.TestCase):
             self.assertIn("cognee", st["adapters"])
             self.assertIn("letta", st["adapters"])
             self.assertIn("open_interpreter", st["adapters"])
+            self.assertIn("grok_agent", st["adapters"])
 
     def test_remember_turn_respects_min_score(self):
         env = {
@@ -267,6 +271,154 @@ class TestIntentPatterns(unittest.TestCase):
         self.assertEqual(detect_intent("oi status"), Intent.EXT_MEMORY)
         # Normal chat / free-form interpreter talk must not trigger companion
         self.assertEqual(detect_intent("Was ist ein Interpreter?"), Intent.CHAT)
+
+    def test_grok_agent_intents(self):
+        from isaac_core import detect_intent, Intent
+
+        self.assertEqual(detect_intent("grok: list files"), Intent.GROK_AGENT)
+        self.assertEqual(
+            detect_intent("grok-agent: review tests"),
+            Intent.GROK_AGENT,
+        )
+        self.assertEqual(
+            detect_intent("xai-agent: fix lint"),
+            Intent.GROK_AGENT,
+        )
+        self.assertEqual(detect_intent("grok status"), Intent.EXT_MEMORY)
+        # Must not steal free-form chat or shell "agent:" path
+        self.assertEqual(detect_intent("Was ist Grok?"), Intent.CHAT)
+        self.assertEqual(detect_intent("agent: shell ls"), Intent.AGENT)
+
+
+class TestGrokAgentAdapter(unittest.TestCase):
+    def test_disabled_by_default(self):
+        from external_memory import reset_external_memory_bridge
+        from external_memory.config import load_external_memory_config
+
+        with patch.dict(
+            "os.environ",
+            {"ISAAC_GROK_AGENT_ENABLED": "0"},
+            clear=False,
+        ):
+            reset_external_memory_bridge()
+            cfg = load_external_memory_config()
+            self.assertFalse(cfg.grok_agent_enabled)
+
+    def test_run_invokes_headless_json_when_enabled(self):
+        from external_memory.config import ExternalMemoryConfig
+        from external_memory.grok_agent_adapter import GrokAgentAdapter
+
+        cfg = ExternalMemoryConfig(
+            grok_agent_enabled=True,
+            grok_agent_bin="/bin/true",
+            grok_agent_model="grok-build",
+            grok_agent_timeout_s=30.0,
+            grok_agent_max_turns=5,
+            grok_agent_always_approve=True,
+            grok_agent_safe_yolo=True,
+            grok_agent_auto_resume=True,
+            grok_agent_cwd="/tmp",
+        )
+        adapter = GrokAgentAdapter(cfg)
+        adapter._tried = True
+        adapter._bin_path = "/bin/echo"
+        adapter._version = "test"
+
+        payload = json.dumps(
+            {
+                "text": "GROK_OK",
+                "stopReason": "EndTurn",
+                "sessionId": "sess-123",
+            }
+        )
+        with patch("subprocess.run") as run_mock:
+            run_mock.return_value = type(
+                "P",
+                (),
+                {"returncode": 0, "stdout": payload + "\n", "stderr": ""},
+            )()
+            result = adapter.run("Reply GROK_OK")
+        self.assertTrue(result["ok"])
+        self.assertIn("GROK_OK", result["text"])
+        self.assertEqual(result.get("session_id"), "sess-123")
+        self.assertEqual(adapter.last_session_id(), "sess-123")
+        args = run_mock.call_args[0][0]
+        self.assertEqual(args[0], "/bin/echo")
+        self.assertIn("-p", args)
+        self.assertIn("--output-format", args)
+        self.assertIn("json", args)
+        self.assertIn("--always-approve", args)
+        self.assertIn("--max-turns", args)
+        self.assertIn("--deny", args)
+        self.assertIn("--rules", args)
+        self.assertEqual(run_mock.call_args.kwargs.get("stdin"), subprocess.DEVNULL)
+
+    def test_auto_resume_passes_resume_flag(self):
+        from external_memory.config import ExternalMemoryConfig
+        from external_memory.grok_agent_adapter import GrokAgentAdapter
+
+        cfg = ExternalMemoryConfig(
+            grok_agent_enabled=True,
+            grok_agent_auto_resume=True,
+            grok_agent_always_approve=False,
+            grok_agent_safe_yolo=True,
+        )
+        adapter = GrokAgentAdapter(cfg)
+        adapter._tried = True
+        adapter._bin_path = "/bin/echo"
+        adapter.set_session_id("prev-session-id")
+
+        payload = json.dumps(
+            {"text": "cont", "sessionId": "prev-session-id"}
+        )
+        with patch("subprocess.run") as run_mock:
+            run_mock.return_value = type(
+                "P", (), {"returncode": 0, "stdout": payload, "stderr": ""}
+            )()
+            result = adapter.run("continue please")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result.get("resumed_session_id"), "prev-session-id")
+        args = run_mock.call_args[0][0]
+        self.assertIn("--resume", args)
+        self.assertIn("prev-session-id", args)
+        # no yolo → no default deny
+        self.assertNotIn("--deny", args)
+
+    def test_force_new_skips_resume(self):
+        from external_memory.config import ExternalMemoryConfig
+        from external_memory.grok_agent_adapter import GrokAgentAdapter
+
+        cfg = ExternalMemoryConfig(
+            grok_agent_enabled=True,
+            grok_agent_auto_resume=True,
+        )
+        adapter = GrokAgentAdapter(cfg)
+        adapter._tried = True
+        adapter._bin_path = "/bin/echo"
+        adapter.set_session_id("old")
+
+        payload = json.dumps({"text": "fresh", "sessionId": "new-sess"})
+        with patch("subprocess.run") as run_mock:
+            run_mock.return_value = type(
+                "P", (), {"returncode": 0, "stdout": payload, "stderr": ""}
+            )()
+            adapter.run("fresh task", force_new=True)
+        args = run_mock.call_args[0][0]
+        self.assertNotIn("--resume", args)
+
+    def test_parse_grok_prompt_directives(self):
+        from isaac_core import IsaacKernel
+
+        # Avoid full kernel init — bind method via type
+        parse = IsaacKernel._parse_grok_agent_prompt
+        dummy = object.__new__(IsaacKernel)
+        p, force, resume = parse(dummy, "grok: new: list files")
+        self.assertTrue(force)
+        self.assertEqual(p, "list files")
+        p, force, resume = parse(dummy, "grok: resume abcd1234-ef56-7890-abcd-ef1234567890: go")
+        self.assertFalse(force)
+        self.assertEqual(resume, "abcd1234-ef56-7890-abcd-ef1234567890")
+        self.assertEqual(p, "go")
 
 
 class TestOpenInterpreterAdapter(unittest.TestCase):

@@ -42,6 +42,7 @@ class ExternalMemoryConfig:
     cognee_enabled: bool = False
     letta_enabled: bool = False
     open_interpreter_enabled: bool = False
+    grok_agent_enabled: bool = False
     write_enabled: bool = False
     min_score: float = 5.0
     search_timeout_s: float = 2.5
@@ -60,6 +61,18 @@ class ExternalMemoryConfig:
     open_interpreter_provider: str = "openrouter"
     open_interpreter_model: str = "openai/gpt-4o-mini"
     open_interpreter_timeout_s: float = 180.0
+    # Grok Build CLI companion (headless `grok -p`)
+    grok_agent_bin: str = "grok"
+    grok_agent_model: str = ""  # empty → CLI default
+    grok_agent_cwd: str = ""  # empty → process cwd / repo root
+    grok_agent_timeout_s: float = 300.0
+    grok_agent_max_turns: int = 20
+    grok_agent_always_approve: bool = False  # --always-approve / yolo
+    grok_agent_safe_yolo: bool = True  # deny + safety rules when always_approve
+    grok_agent_auto_resume: bool = True  # resume last session on next grok:
+    grok_agent_disallowed_tools: str = ""  # comma-separated tool denylist
+    grok_agent_rules: str = ""  # extra --rules guardrails
+    grok_agent_extra_deny: str = ""  # extra --deny rules (comma-separated)
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_llm: str = "llama3.1:8b"
     ollama_embed: str = "nomic-embed-text:latest"
@@ -71,6 +84,7 @@ class ExternalMemoryConfig:
             or self.cognee_enabled
             or self.letta_enabled
             or self.open_interpreter_enabled
+            or self.grok_agent_enabled
         )
 
 
@@ -90,6 +104,7 @@ def load_external_memory_config() -> ExternalMemoryConfig:
         cognee_enabled=_env_bool("ISAAC_COGNEE_ENABLED", False),
         letta_enabled=_env_bool("ISAAC_LETTA_ENABLED", False),
         open_interpreter_enabled=_env_bool("ISAAC_OPEN_INTERPRETER_ENABLED", False),
+        grok_agent_enabled=_env_bool("ISAAC_GROK_AGENT_ENABLED", False),
         write_enabled=_env_bool("ISAAC_EXTERNAL_MEMORY_WRITE", False),
         min_score=_env_float("ISAAC_EXTERNAL_MEMORY_MIN_SCORE", 5.0),
         search_timeout_s=_env_float("ISAAC_EXTERNAL_MEMORY_SEARCH_TIMEOUT", 2.5),
@@ -128,6 +143,32 @@ def load_external_memory_config() -> ExternalMemoryConfig:
         open_interpreter_timeout_s=_env_float(
             "ISAAC_OPEN_INTERPRETER_TIMEOUT", 180.0
         ),
+        grok_agent_bin=(
+            os.getenv("GROK_BIN")
+            or os.getenv("ISAAC_GROK_AGENT_BIN")
+            or "grok"
+        ).strip()
+        or "grok",
+        grok_agent_model=(
+            os.getenv("ISAAC_GROK_AGENT_MODEL") or os.getenv("GROK_MODEL") or ""
+        ).strip(),
+        grok_agent_cwd=(
+            os.getenv("ISAAC_GROK_AGENT_CWD") or ""
+        ).strip(),
+        grok_agent_timeout_s=_env_float("ISAAC_GROK_AGENT_TIMEOUT", 300.0),
+        grok_agent_max_turns=max(1, _env_int("ISAAC_GROK_AGENT_MAX_TURNS", 20)),
+        grok_agent_always_approve=_env_bool(
+            "ISAAC_GROK_AGENT_ALWAYS_APPROVE", False
+        ),
+        grok_agent_safe_yolo=_env_bool("ISAAC_GROK_AGENT_SAFE_YOLO", True),
+        grok_agent_auto_resume=_env_bool("ISAAC_GROK_AGENT_AUTO_RESUME", True),
+        grok_agent_disallowed_tools=(
+            os.getenv("ISAAC_GROK_AGENT_DISALLOWED_TOOLS") or ""
+        ).strip(),
+        grok_agent_rules=(os.getenv("ISAAC_GROK_AGENT_RULES") or "").strip(),
+        grok_agent_extra_deny=(
+            os.getenv("ISAAC_GROK_AGENT_EXTRA_DENY") or ""
+        ).strip(),
         ollama_host=ollama_host,
         ollama_llm=(
             os.getenv("ISAAC_MEM0_OLLAMA_MODEL")

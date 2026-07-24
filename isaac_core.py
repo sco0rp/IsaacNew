@@ -99,6 +99,7 @@ class Intent:
     URL_ADD     = "url_add"
     LETTA       = "letta"           # Explizit: Letta Code Companion-CLI
     OPEN_INTERPRETER = "open_interpreter"  # Explizit: Open Interpreter Companion
+    GROK_AGENT  = "grok_agent"      # Explizit: Grok Build Agent CLI (headless)
     EXT_MEMORY  = "ext_memory"      # Status: external memory adapters
 
 
@@ -174,6 +175,13 @@ EXPLICIT_COMMAND_PATTERNS = [
         r"^open interpreter\s*:",
         r"^interpreter\s*:",
     ]),
+    (Intent.GROK_AGENT, [
+        r"^grok\s*:",
+        r"^grok-agent\s*:",
+        r"^grok agent\s*:",
+        r"^xai-agent\s*:",
+        r"^xai agent\s*:",
+    ]),
     (Intent.EXT_MEMORY, [
         r"^external memory$",
         r"^external[- ]memory$",
@@ -184,6 +192,9 @@ EXPLICIT_COMMAND_PATTERNS = [
         r"^oi status$",
         r"^open-interpreter status$",
         r"^open interpreter status$",
+        r"^grok status$",
+        r"^grok-agent status$",
+        r"^grok agent status$",
     ]),
 ]
 
@@ -241,6 +252,8 @@ class IsaacKernel:
         self._last_weather_active: bool = False
         self._last_weather_query: str = ""
         self._background = None   # lazy start in main()
+        # Grok Agent multi-turn session (headless --resume)
+        self._grok_session_id: Optional[str] = None
 
         set_kernel(self)
         self._sudo_token: Optional[str] = None
@@ -467,6 +480,7 @@ class IsaacKernel:
             Intent.EXT_MEMORY: self._handle_ext_memory_status,
             Intent.LETTA:      self._handle_letta,
             Intent.OPEN_INTERPRETER: self._handle_open_interpreter,
+            Intent.GROK_AGENT: self._handle_grok_agent,
         }
         if intent in direkt:
             result = direkt[intent](user_input)
@@ -2139,6 +2153,184 @@ class IsaacKernel:
         except Exception as exc:
             return f"[Open Interpreter] Fehler: {exc}"
 
+    def _parse_grok_agent_prompt(self, text: str) -> tuple[str, bool, Optional[str]]:
+        """Strip prefix and session directives.
+
+        Returns (prompt, force_new, resume_session_id_override).
+
+        Directives (after prefix):
+          new: | /new | --new     → force new session
+          resume <id>: | @<id>    → resume explicit session
+          clear session | reset   → drop stored session, then treat rest as prompt
+        """
+        prompt = text
+        for prefix in (
+            "grok-agent:",
+            "grok agent:",
+            "xai-agent:",
+            "xai agent:",
+            "grok:",
+        ):
+            low = text.lower()
+            idx = low.find(prefix)
+            if idx >= 0:
+                prompt = text[idx + len(prefix) :].strip()
+                break
+
+        force_new = False
+        resume_override: Optional[str] = None
+        pl = prompt.lower()
+
+        if pl in {"clear session", "reset session", "session clear", "session reset"}:
+            return "", True, None
+
+        # grok: new: task  |  grok: /new task  |  grok: --new task
+        for marker in ("new:", "/new ", "--new "):
+            if pl.startswith(marker):
+                force_new = True
+                prompt = prompt[len(marker) :].strip()
+                break
+        else:
+            if pl == "/new" or pl == "--new" or pl == "new":
+                force_new = True
+                prompt = ""
+
+        # grok: resume <uuid>: task  |  grok: @<uuid> task
+        m = re.match(
+            r"^(?:resume\s+)?@?([0-9a-fA-F-]{8,36})\s*[:\s]\s*(.*)$",
+            prompt,
+            re.DOTALL,
+        )
+        if m and not force_new:
+            cand = m.group(1).strip()
+            rest = (m.group(2) or "").strip()
+            # Avoid eating normal sentences that start with hex-looking words
+            if len(cand) >= 8 and ("-" in cand or len(cand) >= 16):
+                resume_override = cand
+                prompt = rest
+
+        return prompt, force_new, resume_override
+
+    def _handle_grok_agent(self, text: str) -> str:
+        """Explicit Grok Build Agent CLI companion: 'grok: …' / 'grok-agent: …'."""
+        prompt, force_new, resume_override = self._parse_grok_agent_prompt(text)
+
+        # Session clear without task
+        if force_new and not prompt and resume_override is None:
+            try:
+                from external_memory import get_external_memory_bridge
+
+                bridge = get_external_memory_bridge()
+                bridge.grok_agent.clear_session()
+            except Exception:
+                pass
+            self._grok_session_id = None
+            if (text or "").lower().strip().endswith(("clear session", "reset session", "session clear", "session reset")) \
+                    or "clear session" in (text or "").lower() or "reset session" in (text or "").lower():
+                return "[Grok Agent] Session gelöscht. Nächster `grok:` startet neu."
+
+        if not prompt:
+            sid = getattr(self, "_grok_session_id", None) or ""
+            return (
+                "[Grok Agent] Format: grok: AUFGABE\n"
+                "Aliases: grok-agent: | grok agent: | xai-agent:\n"
+                "Session: grok: new: AUFGABE  |  grok: resume <id>: AUFGABE\n"
+                "         grok: clear session  |  auto-resume default ON\n"
+                f"Aktuelle Session: {sid or '(keine)'}\n"
+                "Flag: ISAAC_GROK_AGENT_ENABLED=1\n"
+                "Binary: grok on PATH (Grok Build CLI)\n"
+                "Auth: XAI_API_KEY or `grok login`\n"
+                "Full tool autonomy: ISAAC_GROK_AGENT_ALWAYS_APPROVE=1 "
+                "(--always-approve; SAFE_YOLO deny-rules default ON)\n"
+                "Docs: docs/GROK_AGENT.md"
+            )
+        try:
+            from external_memory import get_external_memory_bridge
+            from privilege import steffen_ctx
+
+            bridge = get_external_memory_bridge()
+            if not bridge.cfg.grok_agent_enabled:
+                return (
+                    "[Grok Agent] Deaktiviert. Setze ISAAC_GROK_AGENT_ENABLED=1 "
+                    "und stelle sicher, dass `grok` auf PATH liegt."
+                )
+            try:
+                from constitution import get_constitution
+
+                decision = get_constitution().validate_action(
+                    "system_command",
+                    {
+                        "command": "grok-agent",
+                        "prompt": prompt[:200],
+                        "owner_approved": True,
+                        "risk": "high"
+                        if bridge.cfg.grok_agent_always_approve
+                        else "normal",
+                        "audit_logged": True,
+                    },
+                )
+                if not decision.get("allowed", True):
+                    blocked = ", ".join(decision.get("blocked_by") or []) or "policy"
+                    return f"[Grok Agent] Verfassung blockiert: {blocked}"
+            except Exception:
+                pass
+            try:
+                ok, reason = self.gate.authorize(
+                    "system_command",
+                    steffen_ctx("Grok Build Agent companion"),
+                )
+                if not ok:
+                    return f"[Grok Agent] Privilege verweigert: {reason}"
+            except Exception:
+                pass
+
+            # Prefer Isaac repo root when cwd not configured
+            cwd = (bridge.cfg.grok_agent_cwd or "").strip() or None
+            if not cwd:
+                try:
+                    from config import BASE_DIR
+
+                    cwd = str(BASE_DIR) if BASE_DIR else None
+                except Exception:
+                    cwd = None
+
+            # Sync kernel session ↔ adapter for multi-turn
+            if force_new:
+                bridge.grok_agent.clear_session()
+                self._grok_session_id = None
+            elif resume_override:
+                bridge.grok_agent.set_session_id(resume_override)
+                self._grok_session_id = resume_override
+            elif self._grok_session_id and not bridge.grok_agent.last_session_id():
+                bridge.grok_agent.set_session_id(self._grok_session_id)
+
+            result = bridge.grok_agent.run(
+                prompt,
+                cwd=cwd,
+                resume_session_id=resume_override,
+                force_new=force_new,
+            )
+            sid = (result.get("session_id") or "").strip()
+            if sid:
+                self._grok_session_id = sid
+            resumed = (result.get("resumed_session_id") or "").strip()
+            sid_note = f" session={sid}" if sid else ""
+            if resumed:
+                sid_note += f" resumed={resumed[:12]}…" if len(resumed) > 12 else f" resumed={resumed}"
+            yolo = " always_approve" if result.get("always_approve") else ""
+            if result.get("safe_yolo"):
+                yolo += "+safe"
+            if result.get("ok"):
+                body = (result.get("text") or "").strip() or "(keine Ausgabe)"
+                return f"[Grok Agent{yolo}{sid_note}]\n{body[:6000]}"
+            err = result.get("error") or "unbekannt"
+            body = (result.get("text") or "").strip()
+            if body:
+                return f"[Grok Agent] Fehler: {err}\n{body[:2500]}"
+            return f"[Grok Agent] Fehler: {err}"
+        except Exception as exc:
+            return f"[Grok Agent] Fehler: {exc}"
+
     def _handle_pause(self, *_) -> str:
         self.gate.pause(steffen_ctx("Pause"))
         return "Isaac pausiert."
@@ -2188,6 +2380,13 @@ class IsaacKernel:
                 "open interpreter:",
                 "interpreter:",
             ),
+            Intent.GROK_AGENT: (
+                "grok:",
+                "grok-agent:",
+                "grok agent:",
+                "xai-agent:",
+                "xai agent:",
+            ),
             Intent.EXT_MEMORY: (
                 "external memory",
                 "external-memory",
@@ -2198,6 +2397,9 @@ class IsaacKernel:
                 "oi status",
                 "open-interpreter status",
                 "open interpreter status",
+                "grok status",
+                "grok-agent status",
+                "grok agent status",
             ),
         }
         prefixes = explicit_prefixes.get(intent, ())

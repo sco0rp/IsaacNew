@@ -9,6 +9,7 @@ from typing import Any
 
 from external_memory.cognee_adapter import CogneeAdapter
 from external_memory.config import ExternalMemoryConfig, load_external_memory_config
+from external_memory.grok_agent_adapter import GrokAgentAdapter
 from external_memory.letta_adapter import LettaAdapter
 from external_memory.mem0_adapter import Mem0Adapter
 from external_memory.open_interpreter_adapter import OpenInterpreterAdapter
@@ -17,7 +18,7 @@ log = logging.getLogger("Isaac.ExternalMemory")
 
 
 class ExternalMemoryBridge:
-    """Aggregates Mem0 / Cognee / Letta / Open Interpreter with fail-soft semantics."""
+    """Aggregates Mem0 / Cognee / Letta / Open Interpreter / Grok Agent with fail-soft semantics."""
 
     def __init__(self, cfg: ExternalMemoryConfig | None = None):
         self.cfg = cfg or load_external_memory_config()
@@ -25,6 +26,7 @@ class ExternalMemoryBridge:
         self.cognee = CogneeAdapter(self.cfg)
         self.letta = LettaAdapter(self.cfg)
         self.open_interpreter = OpenInterpreterAdapter(self.cfg)
+        self.grok_agent = GrokAgentAdapter(self.cfg)
 
     def any_enabled(self) -> bool:
         return self.cfg.any_enabled
@@ -172,6 +174,7 @@ class ExternalMemoryBridge:
                 "cognee": self.cognee.status(),
                 "letta": self.letta.status(),
                 "open_interpreter": self.open_interpreter.status(),
+                "grok_agent": self.grok_agent.status(),
             },
         }
 

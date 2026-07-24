@@ -92,4 +92,23 @@ Metrik-Ideen ungebunden; erst sinnvoll wenn echte Kernel-Traces/Evals die Daten 
 
 ---
 
+---
+
+## Nachtrag: Uploads 2026-07-24 ~01:28 UTC
+
+Zusätzliche Dateien (Drive-Suche; teils Root, nicht nur IsaacNew-main):
+
+| Upload | Urteil für Kernel-main |
+|--------|-------------------------|
+| Elicit Phase-3+ Roadmap / OSS-Analyse / OTel-Mapping | **Nützlich als Input** — Gap-Matrix in Master-Roadmap v5; Phasenlabels veraltet |
+| Master Roadmap Gehirnähnlich + Research Brief (SNN/WBE) | **Research-Track R** — nicht consolidate-next |
+| `00_MASTER_PATCH_MANIFEST` (Lab/Vector) | **Abgelehnt** (wie oben) |
+| `trace_otel_adapted` / `run_baselines_adapted` | **Überholt / Schein-Messung** — portable Export + Evals 96/96 ersetzen |
+| Projekt-Übersicht eclizit „Phase 1–2“ | **Veraltet** |
+
+**Kanonische Fortschritts- und Gap-Dokumentation:**  
+`docs/MASTER_ROADMAP_ISAAC_v5_2026-07-24.md`
+
+---
+
 *Review: Zeilenweise Text/Code der relevanten Drive-Artefakte + Diff-Check gegen lokalen Kernel.*

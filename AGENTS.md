@@ -367,15 +367,20 @@ Nicht in unrelated Module driften, außer bei blockierendem Fix.
 
 ## Roadmap (Referenz — nicht aktiver Scope)
 
-1. Verfassung stärker durchsetzen (`constitution.validate_action()` — Modul vorhanden)
-2. Self-Model weiter an Interaktionen koppeln (Modul vorhanden)
-3. Task-Checkpointing verfeinern (State-Machine + Resume vorhanden)
-4. MCP vollständig (Grundgerüst vorhanden)
-5. Eval-Harness ausbauen (`evals/` — partiell vorhanden)
+**Kanonische Master-Roadmap:** `docs/MASTER_ROADMAP_ISAAC_v5_2026-07-24.md`  
+(Tracks C consolidate · G goals/owner-autonomy · M memory bounded · R brain/SNN geparkt)
+
+Kurzliste (Details + Gap-Matrix in der Master-Roadmap):
+
+1. Verfassung / Soft-Checkpoints / Evals — weitgehend erledigt; restliche Härtung Track C  
+2. Self-Model / bounded Learning weiter koppeln (Track C4)  
+3. MCP Contract-Tests & Docs — Grundgerüst + Resources vorhanden (Track C2), **kein** Subagent-Expansion  
+4. Portable Trace / EXECUTION-Metadaten vertiefen (Track C1)  
+5. CI Billing entsperren (Track C5)
 
 **Nicht aus Drive-Patch-Paketen / Parallel-Roadmaps übernehmen** (Juli 2026):  
-eigene State-Machine, OTel-Doppeltypen, Isaac-Lab-Mocks, Vector-Doppelpfade.  
-Siehe `docs/DRIVE_PATCH_REVIEW_2026-07-24.md`.
+eigene State-Machine, OTel-Doppeltypen, Isaac-Lab-Mocks, Vector-Doppelpfade, SNN/WBE auf main.  
+Siehe `docs/DRIVE_PATCH_REVIEW_2026-07-24.md` und Master-Roadmap §8 Anti-Liste.
 
 ---
 
@@ -411,12 +416,14 @@ WHEN IN DOUBT: stop, document blocker, do not broaden scope.
 Bei vertiefter Arbeit in dieser Reihenfolge:
 
 1. `AGENTS.md` (diese Datei) — kanonische Agenten-Anweisung
-2. `06_goal_autonomy_checklist.txt` — Goal-Autonomie S0–S4 (abgeschlossen)
-3. `05_evolution2_checklist.txt` — Evolution 2.0 (abgeschlossen, CI-Hinweis)
-4. `docs/OPEN_SOURCE_PATTERNS.md` — bounded Open-Source-Muster
-5. `docs/GITHUB_WATCHLIST.md` — was beobachten / nicht importieren
-6. `docs/LOCAL_LLM.md`, `docs/OPEN_INTERPRETER.md` — optionale lokale Backends/Companions
-7. `README.md`, `docs/LEITBILD.md`
+2. `docs/MASTER_ROADMAP_ISAAC_v5_2026-07-24.md` — Master-Roadmap + Gap-Matrix
+3. `06_goal_autonomy_checklist.txt` — Goal-Autonomie S0–S4 (abgeschlossen)
+4. `05_evolution2_checklist.txt` — Evolution 2.0 (abgeschlossen, CI-Hinweis)
+5. `docs/OPEN_SOURCE_PATTERNS.md` — bounded Open-Source-Muster
+6. `docs/GITHUB_WATCHLIST.md` — was beobachten / nicht importieren
+7. `docs/DRIVE_PATCH_REVIEW_2026-07-24.md` — Drive-Patches (Ablehnung)
+8. `docs/LOCAL_LLM.md`, `docs/OPEN_INTERPRETER.md` — optionale lokale Backends/Companions
+9. `README.md`, `docs/LEITBILD.md`
 
 **Priorität bei Widersprüchen:** `AGENTS.md` → Checklisten (`06_…` / `05_…`) → Open-Source-Patterns.
 

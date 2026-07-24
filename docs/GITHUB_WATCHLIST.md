@@ -65,7 +65,18 @@ OpenClaw/Hermes/Cline als Orchestrator.
 Vector-Pipeline-Doppelpfade, `MASTER_UNIFIED_ROADMAP_*` v1–v4 als aktive Phase —  
 **nicht importieren.** Begründung: `docs/DRIVE_PATCH_REVIEW_2026-07-24.md`.
 
+## Tier R — Research only (nicht auf main ohne Owner-Freigabe)
+
+| Thema | Quellen | Isaac-Haltung |
+|-------|---------|----------------|
+| SNN / snnTorch / SpikingJelly / BrainCog | Drive *Gehirnähnliche Architektur* PDFs | Isolierter Branch + Flag; kein Default-Dependency |
+| WBE / Dendritic planners | Research Brief | Sandbox-Notiz, kein Produktionspfad |
+| Neuromorphic Event Loop (Lava/Rockpool) | Master Brain Roadmap | Nicht Executor-Replace |
+
+Kanonische Einordnung: `docs/MASTER_ROADMAP_ISAAC_v5_2026-07-24.md` Track **R**.
+
 ## Status
 
-Goal-Autonomie S0–S4 **DONE** (2026-07-18): Store, Motivation, Inquiry/Research, Digest, Temporal Facts — siehe `06_goal_autonomy_checklist.txt`.
+Goal-Autonomie S0–S4 **DONE** (2026-07-18): Store, Motivation, Inquiry/Research, Digest, Temporal Facts — siehe `06_goal_autonomy_checklist.txt`.  
+Master-Roadmap v5 + Eval-Harness **96/96** (2026-07-24).  
 Browser-use wholesale: **deferred** bis konkreter Defekt.

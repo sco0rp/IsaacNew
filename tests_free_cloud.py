@@ -132,7 +132,7 @@ class TestFreeCloudHelpers(unittest.TestCase):
                 self.assertNotIn("local", cfg.available_providers)
                 self.assertIn("openrouter", cfg.available_providers)
                 self.assertEqual(cfg.relay.primary_provider, "openrouter")
-                self.assertIn("gemini", cfg.free_providers or ["gemini"])
+                self.assertIn("gemini", fc.recommended_free_providers())
                 # free set includes gemini even if no key (property filters available)
                 free_ids = {
                     "ollama", "local", "groq", "openrouter", "gemini",

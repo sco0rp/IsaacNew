@@ -71,6 +71,8 @@ def run() -> dict:
         "resource://memory/blocks",
         "resource://procedures",
         "resource://audit/tail",
+        "isaac://tasks/recent",
+        "isaac://tools/registry",
     ):
         present = uri in caps.get("resources", [])
         read_ok = False
@@ -81,11 +83,32 @@ def run() -> dict:
             detail = {"keys": sorted((result.get("resource") or {}).keys()) if isinstance(result.get("resource"), dict) else type(result.get("resource")).__name__}
         cases.append(
             {
-                "name": f"resource_{uri.split('//')[-1].replace('/', '_')}",
+                "name": f"resource_{uri.split('/')[-1]}",
                 "ok": present and read_ok,
                 "detail": detail,
             }
         )
+
+    # stdio transport smoke test simulation
+    from mcp_server import run_stdio_transport
+    import io
+    old_stdin = sys.stdin
+    old_stdout = sys.stdout
+    try:
+        sys.stdin = io.StringIO('{"jsonrpc":"2.0","id":99,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}\n')
+        sys.stdout = io.StringIO()
+        res_code = run_stdio_transport()
+        stdio_out = sys.stdout.getvalue()
+        stdio_ok = res_code == 0 and "serverInfo" in stdio_out
+    finally:
+        sys.stdin = old_stdin
+        sys.stdout = old_stdout
+
+    cases.append({
+        "name": "stdio_transport_smoke",
+        "ok": stdio_ok,
+        "detail": {"stdio_response_received": stdio_ok},
+    })
 
     cases.append(
         {

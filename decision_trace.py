@@ -1,9 +1,25 @@
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
+
+
+# Sensitive key fragments — values redacted in portable export (not dropped).
+_REDACT_KEY_FRAGMENTS = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "password",
+    "secret",
+    "token",
+    "credential",
+    "cookie",
+    "private_key",
+)
 
 
 class TracePhase(Enum):
@@ -64,11 +80,12 @@ class DecisionTrace:
 
         Kein externes Backend, keine zweite TracePhase-Welt.
         Nutzt ausschließlich die kanonischen TracePhase-Werte.
+        Redaction sensibler Keys; gen_ai.*-Aliase aus EXECUTION-Daten.
         """
         rid = (request_id or "").strip() or "isaac-trace"
         if not self.entries:
             return {
-                "schema": "isaac.decision_trace.portable_v1",
+                "schema": "isaac.decision_trace.portable_v1_1",
                 "request_id": rid,
                 "service": "isaac-cognitive-kernel",
                 "resourceSpans": [],
@@ -95,9 +112,33 @@ class DecisionTrace:
         ]
 
         phase_spans: dict[str, dict[str, Any]] = {}
+        redacted_entries: list[dict[str, Any]] = []
         for entry in self.entries:
             phase_key = entry.phase.value
+            safe_data = redact_trace_data(dict(entry.data or {}))
+            enriched = enrich_gen_ai_attributes(safe_data)
+            redacted_entries.append(
+                {
+                    "sequence": entry.sequence,
+                    "ts": entry.ts,
+                    "phase": phase_key,
+                    "event": entry.event,
+                    "data": enriched,
+                }
+            )
             if phase_key not in phase_spans:
+                span_attrs: dict[str, Any] = {"isaac.phase": phase_key}
+                # Lift gen_ai / model keys onto the phase span when present.
+                for key in (
+                    "gen_ai.system",
+                    "gen_ai.request.model",
+                    "gen_ai.response.model",
+                    "provider",
+                    "model",
+                    "latency_ms",
+                ):
+                    if key in enriched and enriched[key] not in (None, ""):
+                        span_attrs[key] = enriched[key]
                 span = {
                     "traceId": rid,
                     "spanId": f"{phase_key}-{rid[:12]}",
@@ -106,25 +147,37 @@ class DecisionTrace:
                     "kind": "INTERNAL",
                     "startTimeUnixNano": int(entry.ts * 1_000_000_000),
                     "endTimeUnixNano": int(entry.ts * 1_000_000_000),
-                    "attributes": {"isaac.phase": phase_key},
+                    "attributes": span_attrs,
                     "events": [],
                 }
                 phase_spans[phase_key] = span
                 spans.append(span)
+            else:
+                # Update span-level attrs if later events carry model metadata.
+                for key in (
+                    "gen_ai.system",
+                    "gen_ai.request.model",
+                    "gen_ai.response.model",
+                    "provider",
+                    "model",
+                    "latency_ms",
+                ):
+                    if key in enriched and enriched[key] not in (None, ""):
+                        phase_spans[phase_key]["attributes"][key] = enriched[key]
             phase_spans[phase_key]["events"].append(
                 {
                     "timeUnixNano": int(entry.ts * 1_000_000_000),
                     "name": entry.event,
-                    "attributes": dict(entry.data or {}),
+                    "attributes": enriched,
                 }
             )
             phase_spans[phase_key]["endTimeUnixNano"] = int(entry.ts * 1_000_000_000)
 
         return {
-            "schema": "isaac.decision_trace.portable_v1",
+            "schema": "isaac.decision_trace.portable_v1_1",
             "request_id": rid,
             "service": "isaac-cognitive-kernel",
-            "entries": self.to_list(),
+            "entries": redacted_entries,
             "resourceSpans": [
                 {
                     "resource": {
@@ -143,6 +196,121 @@ class DecisionTrace:
         }
 
 
+def redact_trace_data(data: dict[str, Any], *, max_str: int = 400) -> dict[str, Any]:
+    """Redact sensitive keys and truncate long strings for portable export."""
+    out: dict[str, Any] = {}
+    for key, value in (data or {}).items():
+        k = str(key)
+        kl = k.lower()
+        if any(frag in kl for frag in _REDACT_KEY_FRAGMENTS):
+            out[k] = "[REDACTED]"
+            continue
+        if isinstance(value, dict):
+            out[k] = redact_trace_data(value, max_str=max_str)
+        elif isinstance(value, list):
+            out[k] = [
+                redact_trace_data(v, max_str=max_str) if isinstance(v, dict) else _truncate_scalar(v, max_str)
+                for v in value[:40]
+            ]
+        else:
+            out[k] = _truncate_scalar(value, max_str)
+    return out
+
+
+def _truncate_scalar(value: Any, max_str: int) -> Any:
+    if isinstance(value, str) and len(value) > max_str:
+        return value[:max_str] + "…"
+    return value
+
+
+def enrich_gen_ai_attributes(data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Add OTel-GenAI-style aliases from Isaac EXECUTION fields without dropping originals.
+
+    Mapping (local-first, no SDK):
+      provider / provider_id  → gen_ai.system
+      model                   → gen_ai.request.model (+ response.model if absent)
+      latency_ms / model_call_ms → kept; also gen_ai.request latency not standardized as ms field
+    """
+    out = dict(data or {})
+    provider = str(out.get("provider") or out.get("provider_id") or out.get("gen_ai.system") or "").strip()
+    model = str(out.get("model") or out.get("gen_ai.request.model") or "").strip()
+    if provider and "gen_ai.system" not in out:
+        out["gen_ai.system"] = provider
+    if model:
+        out.setdefault("gen_ai.request.model", model)
+        out.setdefault("gen_ai.response.model", model)
+    if "latency_ms" not in out and "model_call_ms" in out:
+        try:
+            out["latency_ms"] = float(out["model_call_ms"])
+        except (TypeError, ValueError):
+            pass
+    # Approximate usage only if callers already estimated tokens
+    for src, dst in (
+        ("input_tokens", "gen_ai.usage.input_tokens"),
+        ("output_tokens", "gen_ai.usage.output_tokens"),
+        ("prompt_tokens", "gen_ai.usage.input_tokens"),
+        ("completion_tokens", "gen_ai.usage.output_tokens"),
+    ):
+        if src in out and dst not in out:
+            out[dst] = out[src]
+    return out
+
+
+def build_execution_llm_trace_data(
+    *,
+    provider: str = "",
+    model: str = "",
+    latency_ms: float | None = None,
+    iteration: int = 0,
+    prompt_chars: int = 0,
+    response_chars: int = 0,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    ok: bool = True,
+    error: str = "",
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Canonical payload for TracePhase.EXECUTION model-call events."""
+    data: dict[str, Any] = {
+        "provider": (provider or "")[:80],
+        "model": (model or "")[:120],
+        "iteration": int(iteration),
+        "prompt_chars": int(max(0, prompt_chars)),
+        "response_chars": int(max(0, response_chars)),
+        "ok": bool(ok),
+    }
+    if latency_ms is not None:
+        data["latency_ms"] = round(float(latency_ms), 2)
+        data["model_call_ms"] = data["latency_ms"]
+    if input_tokens is not None:
+        data["input_tokens"] = int(input_tokens)
+    if output_tokens is not None:
+        data["output_tokens"] = int(output_tokens)
+    if error:
+        data["error"] = str(error)[:200]
+    if extra:
+        data.update(extra)
+    return enrich_gen_ai_attributes(data)
+
+
+def export_portable_trace(
+    trace: DecisionTrace,
+    request_id: str = "",
+    output_path: str | Path = "",
+) -> Path:
+    """Write portable export JSON to disk (local-first, redacted)."""
+    path = Path(output_path or f"traces/{(request_id or 'isaac-trace').strip() or 'isaac-trace'}.portable.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = trace.to_portable_export(request_id=request_id)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    return path
+
+
 def _portable_span_name(phase: TracePhase) -> str:
     """Semantische Span-Namen für lokalen Export (kein OTel-SDK)."""
     mapping = {
@@ -153,7 +321,7 @@ def _portable_span_name(phase: TracePhase) -> str:
         TracePhase.MOTIVATION: "isaac.motivation",
         TracePhase.ELIGIBILITY: "isaac.eligibility",
         TracePhase.SELECTION: "isaac.selection",
-        TracePhase.EXECUTION: "isaac.execution",
+        TracePhase.EXECUTION: "gen_ai.chat",
         TracePhase.CONTEXT_INTEGRATION: "isaac.context_integration",
         TracePhase.EVALUATION: "isaac.evaluation",
         TracePhase.LEARNING: "isaac.learning",

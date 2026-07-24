@@ -1040,23 +1040,66 @@ class TestCriticalBugs(unittest.TestCase):
 
     def test_decision_trace_portable_export_uses_canonical_phases(self):
         """Drive trace_otel.py doppelte TracePhase vermeiden — Export über echte Typen."""
+        from decision_trace import (
+            build_execution_llm_trace_data,
+            export_portable_trace,
+            redact_trace_data,
+        )
+
         trace = DecisionTrace()
         trace.add(TracePhase.GOVERNANCE, "gate", {"allowed": True})
         trace.add(TracePhase.CLASSIFICATION, "classified", {"interaction_class": "normal_chat"})
         trace.add(TracePhase.MOTIVATION, "tick", {"goal_id": "g1"})
+        trace.add(
+            TracePhase.EXECUTION,
+            "model_call",
+            build_execution_llm_trace_data(
+                provider="gemini",
+                model="gemini-flash-lite-latest",
+                latency_ms=123.4,
+                iteration=0,
+                prompt_chars=40,
+                response_chars=12,
+                input_tokens=20,
+                output_tokens=5,
+                ok=True,
+                extra={"api_key": "should-not-leak"},
+            ),
+        )
         portable = trace.to_portable_export(request_id="req-portable-1")
-        self.assertEqual(portable["schema"], "isaac.decision_trace.portable_v1")
+        self.assertEqual(portable["schema"], "isaac.decision_trace.portable_v1_1")
         self.assertEqual(portable["request_id"], "req-portable-1")
         phases = [e["phase"] for e in portable["entries"]]
-        self.assertEqual(phases, ["governance", "classification", "motivation"])
+        self.assertEqual(phases[:3], ["governance", "classification", "motivation"])
+        self.assertIn("execution", phases)
         # echte lowercase-Phasen, nicht UPPERCASE-Doppelwelt aus Drive-Patches
         span_phases = []
+        exec_span_attrs = {}
         for rs in portable["resourceSpans"]:
             for ss in rs["scopeSpans"]:
                 for span in ss["spans"]:
                     if "isaac.phase" in span.get("attributes", {}):
                         span_phases.append(span["attributes"]["isaac.phase"])
+                    if span.get("attributes", {}).get("isaac.phase") == "execution":
+                        exec_span_attrs = span["attributes"]
         self.assertIn("motivation", span_phases)
+        self.assertEqual(exec_span_attrs.get("gen_ai.system"), "gemini")
+        self.assertEqual(exec_span_attrs.get("gen_ai.request.model"), "gemini-flash-lite-latest")
+        self.assertEqual(exec_span_attrs.get("latency_ms"), 123.4)
+        # redaction
+        exec_entry = next(e for e in portable["entries"] if e["phase"] == "execution")
+        self.assertEqual(exec_entry["data"].get("api_key"), "[REDACTED]")
+        red = redact_trace_data({"password": "x", "ok": True})
+        self.assertEqual(red["password"], "[REDACTED]")
+        # file export helper
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = export_portable_trace(trace, request_id="file-export-1", output_path=Path(tmp) / "t.json")
+            self.assertTrue(out.exists())
+            loaded = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(loaded["schema"], "isaac.decision_trace.portable_v1_1")
         json.dumps(portable)
 
     def test_bug_34_explanatory_weather_prompt_stays_normal_chat(self):

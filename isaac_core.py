@@ -101,6 +101,8 @@ class Intent:
     OPEN_INTERPRETER = "open_interpreter"  # Explizit: Open Interpreter Companion
     GROK_AGENT  = "grok_agent"      # Explizit: Grok Build Agent CLI (headless)
     COPILOT_AGENT = "copilot_agent"  # Explizit: GitHub Copilot CLI / cloud agent
+    REMOTE_CLOUD = "remote_cloud"    # Explizit: remote Isaac (Render free) cloud:
+    REMOTE_BOTH  = "remote_both"     # Explizit: lokal + remote both:
     EXT_MEMORY  = "ext_memory"      # Status: external memory adapters
 
 
@@ -191,6 +193,19 @@ EXPLICIT_COMMAND_PATTERNS = [
         r"^github copilot\s*:",
         r"^copilot-agent\s*:",
         r"^copilot agent\s*:",
+    ]),
+    (Intent.REMOTE_CLOUD, [
+        r"^cloud\s*:",
+        r"^free\s*:",
+        r"^render\s*:",
+        r"^isaac-cloud\s*:",
+        r"^isaac cloud\s*:",
+        r"^isaac-free\s*:",
+    ]),
+    (Intent.REMOTE_BOTH, [
+        r"^both\s*:",
+        r"^beide\s*:",
+        r"^fleet\s*:",
     ]),
     (Intent.EXT_MEMORY, [
         r"^external memory$",
@@ -525,6 +540,8 @@ class IsaacKernel:
             Intent.OPEN_INTERPRETER: self._handle_open_interpreter,
             Intent.GROK_AGENT: self._handle_grok_agent,
             Intent.COPILOT_AGENT: self._handle_copilot_agent,
+            Intent.REMOTE_CLOUD: self._handle_remote_cloud,
+            Intent.REMOTE_BOTH: self._handle_remote_both,
         }
         if intent in direkt:
             result = direkt[intent](user_input)
@@ -2652,6 +2669,170 @@ class IsaacKernel:
         except Exception as exc:
             return f"[Copilot] Fehler: {exc}"
 
+    def _strip_remote_prefix(self, text: str) -> tuple[str, str]:
+        """Return (mode, prompt). mode: cloud|both|fleet_status."""
+        prompt = (text or "").strip()
+        low = prompt.lower()
+        for p in (
+            "both:",
+            "beide:",
+            "fleet:",
+            "cloud:",
+            "free:",
+            "render:",
+            "isaac-cloud:",
+            "isaac cloud:",
+            "isaac-free:",
+        ):
+            if low.startswith(p):
+                rest = prompt[len(p) :].strip()
+                if p.startswith(("both", "beide", "fleet")):
+                    return "both", rest
+                return "cloud", rest
+        return "cloud", prompt
+
+    async def _handle_remote_cloud(self, text: str) -> str:
+        """Explicit remote Isaac: cloud: / free: / render: …"""
+        from isaac_remote import (
+            chat_remote,
+            fleet_status,
+            format_fleet_status,
+            format_remote_reply,
+            remote_base_url,
+            remote_bridge_enabled,
+            remote_label,
+        )
+
+        _mode, prompt = self._strip_remote_prefix(text)
+        pl = (prompt or "").lower().strip()
+
+        if not prompt or pl in {"status", "health", "help", "?"}:
+            st = fleet_status()
+            help_txt = (
+                f"\nFormat: cloud: AUFGABE  |  free: AUFGABE  |  render: AUFGABE\n"
+                f"Status: cloud: status\n"
+                f"Beide:  both: AUFGABE  (lokal + {remote_label()})\n"
+                f"Flag:   ISAAC_REMOTE_BRIDGE_ENABLED=1\n"
+                f"URL:    ISAAC_REMOTE_FREE_URL={remote_base_url()}\n"
+                f"Docs:   docs/ISAAC_REMOTE.md"
+            )
+            if not remote_bridge_enabled():
+                return (
+                    "[Cloud] Deaktiviert. Setze ISAAC_REMOTE_BRIDGE_ENABLED=1\n"
+                    + format_fleet_status(st)
+                    + help_txt
+                )
+            if pl in {"status", "health"} or not prompt:
+                return format_fleet_status(st) + (help_txt if not prompt else "")
+            return format_fleet_status(st) + help_txt
+
+        if not remote_bridge_enabled():
+            return (
+                "[Cloud] Deaktiviert. Setze ISAAC_REMOTE_BRIDGE_ENABLED=1 "
+                f"(Ziel: {remote_base_url()})"
+            )
+
+        try:
+            from constitution import get_constitution
+            from privilege import steffen_ctx
+
+            decision = get_constitution().validate_action(
+                "system_command",
+                {
+                    "command": "isaac-remote-cloud",
+                    "prompt": prompt[:200],
+                    "owner_approved": True,
+                    "risk": "normal",
+                    "audit_logged": True,
+                },
+            )
+            if not decision.get("allowed", True):
+                blocked = ", ".join(decision.get("blocked_by") or []) or "policy"
+                return f"[Cloud] Verfassung blockiert: {blocked}"
+            ok, reason = self.gate.authorize(
+                "system_command",
+                steffen_ctx("Remote Isaac cloud companion"),
+            )
+            if not ok:
+                return f"[Cloud] Privilege verweigert: {reason}"
+        except Exception:
+            pass
+
+        result = await chat_remote(prompt)
+        return format_remote_reply(result)
+
+    async def _handle_remote_both(self, text: str) -> str:
+        """both: / beide: — local answer + remote free answer (no shared memory)."""
+        from isaac_remote import (
+            chat_remote,
+            format_remote_reply,
+            remote_base_url,
+            remote_bridge_enabled,
+            remote_label,
+        )
+
+        _mode, prompt = self._strip_remote_prefix(text)
+        if not prompt or prompt.lower().strip() in {"status", "health"}:
+            return await self._handle_remote_cloud("cloud: status")
+
+        if not remote_bridge_enabled():
+            return (
+                "[Both] Cloud-Seite deaktiviert (ISAAC_REMOTE_BRIDGE_ENABLED=0). "
+                "Nur lokal möglich — stelle die Frage ohne Prefix."
+            )
+
+        try:
+            from constitution import get_constitution
+            from privilege import steffen_ctx
+
+            decision = get_constitution().validate_action(
+                "system_command",
+                {
+                    "command": "isaac-remote-both",
+                    "prompt": prompt[:200],
+                    "owner_approved": True,
+                    "risk": "normal",
+                    "audit_logged": True,
+                },
+            )
+            if not decision.get("allowed", True):
+                blocked = ", ".join(decision.get("blocked_by") or []) or "policy"
+                return f"[Both] Verfassung blockiert: {blocked}"
+            ok, reason = self.gate.authorize(
+                "system_command",
+                steffen_ctx("Remote Isaac both companion"),
+            )
+            if not ok:
+                return f"[Both] Privilege verweigert: {reason}"
+        except Exception:
+            pass
+
+        # Parallel: remote WS + local route (chat path)
+        remote_task = asyncio.create_task(chat_remote(prompt))
+
+        local_text = ""
+        local_err = ""
+        try:
+            # Re-enter local pipeline without remote prefix (no recursion into both:)
+            local_text = await self.process(prompt)
+        except Exception as exc:
+            local_err = str(exc)
+
+        remote = await remote_task
+        remote_block = format_remote_reply(remote, title=remote_label())
+
+        if local_err:
+            local_block = f"[Lokal] Fehler: {local_err}"
+        else:
+            local_block = f"[Lokal | dieser Kernel]\n{(local_text or '').strip() or '(keine Ausgabe)'}"
+
+        return (
+            f"## Both — lokal + {remote_label()} ({remote_base_url()})\n\n"
+            f"{local_block}\n\n"
+            f"---\n\n"
+            f"{remote_block}"
+        )
+
     def _handle_pause(self, *_) -> str:
         self.gate.pause(steffen_ctx("Pause"))
         return "Isaac pausiert."
@@ -2716,6 +2897,19 @@ class IsaacKernel:
                 "github copilot:",
                 "copilot-agent:",
                 "copilot agent:",
+            ),
+            Intent.REMOTE_CLOUD: (
+                "cloud:",
+                "free:",
+                "render:",
+                "isaac-cloud:",
+                "isaac cloud:",
+                "isaac-free:",
+            ),
+            Intent.REMOTE_BOTH: (
+                "both:",
+                "beide:",
+                "fleet:",
             ),
             Intent.EXT_MEMORY: (
                 "external memory",

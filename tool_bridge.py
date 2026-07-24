@@ -1,7 +1,8 @@
 """
-Bounded tool bridge: GitHub API, web fetch, Grok agent — credentials from secrets only.
+Bounded tool bridge: GitHub API, web fetch, Grok/Copilot agents, remote Isaac.
 
 Opt-in via ISAAC_TOOL_BRIDGE_ENABLED=1 (default on when secrets present for tool).
+Remote fleet: ISAAC_REMOTE_BRIDGE_ENABLED=1.
 Registered as registry tools with kind=bridge.
 """
 
@@ -60,6 +61,26 @@ BRIDGE_TOOLS: list[dict[str, Any]] = [
         "priority": 86,
         "trust": 75.0,
         "metadata": {"bridge": "copilot_agent"},
+    },
+    {
+        "tool_id": "bridge_isaac_cloud",
+        "name": "isaac_cloud",
+        "kind": "bridge",
+        "category": "code",
+        "description": "Chat with remote Isaac free (ISAAC_REMOTE_BRIDGE_ENABLED)",
+        "priority": 84,
+        "trust": 72.0,
+        "metadata": {"bridge": "isaac_cloud"},
+    },
+    {
+        "tool_id": "bridge_isaac_fleet",
+        "name": "isaac_fleet",
+        "kind": "bridge",
+        "category": "code",
+        "description": "Health of remote Isaac fleet (ISAAC_REMOTE_BRIDGE_ENABLED)",
+        "priority": 83,
+        "trust": 70.0,
+        "metadata": {"bridge": "isaac_fleet"},
     },
 ]
 
@@ -120,6 +141,10 @@ async def run_bridge(bridge_id: str, prompt: str) -> dict[str, Any]:
         return await _bridge_grok_agent(prompt)
     if bid in {"copilot_agent", "copilot", "github_copilot"}:
         return await _bridge_copilot_agent(prompt)
+    if bid in {"isaac_cloud", "isaac_remote", "cloud", "isaac_free"}:
+        return await _bridge_isaac_cloud(prompt)
+    if bid in {"isaac_fleet", "fleet", "isaac_status"}:
+        return await _bridge_isaac_fleet(prompt)
     return {"ok": False, "error": f"unknown bridge: {bid}", "via": "bridge"}
 
 
@@ -355,6 +380,67 @@ async def _bridge_copilot_agent(prompt: str) -> dict[str, Any]:
         return {"ok": False, "error": str(exc), "via": "bridge.copilot_agent"}
 
 
+async def _bridge_isaac_cloud(prompt: str) -> dict[str, Any]:
+    try:
+        from isaac_remote import (
+            chat_remote,
+            format_remote_reply,
+            remote_bridge_enabled,
+            remote_base_url,
+        )
+
+        if not remote_bridge_enabled():
+            return {
+                "ok": False,
+                "error": "ISAAC_REMOTE_BRIDGE_ENABLED=0 — set flag to use remote Isaac",
+                "via": "bridge.isaac_cloud",
+            }
+        text = prompt
+        low = text.lower()
+        for p in ("cloud:", "free:", "render:", "isaac-cloud:", "isaac_cloud:"):
+            if low.startswith(p):
+                text = text[len(p) :].strip()
+                break
+        if (text or "").strip().lower() in {"status", "health", "fleet"}:
+            return await _bridge_isaac_fleet(text)
+        result = await chat_remote(text or prompt)
+        return {
+            "ok": bool(result.get("ok")),
+            "output": format_remote_reply(result)[:8000],
+            "error": result.get("error") or "",
+            "via": "bridge.isaac_cloud",
+            "url": result.get("url") or remote_base_url(),
+            "ms": result.get("ms"),
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "via": "bridge.isaac_cloud"}
+
+
+async def _bridge_isaac_fleet(prompt: str) -> dict[str, Any]:
+    try:
+        from isaac_remote import (
+            fleet_status,
+            format_fleet_status,
+            remote_bridge_enabled,
+        )
+
+        if not remote_bridge_enabled():
+            return {
+                "ok": False,
+                "error": "ISAAC_REMOTE_BRIDGE_ENABLED=0",
+                "via": "bridge.isaac_fleet",
+            }
+        st = fleet_status()
+        return {
+            "ok": bool((st.get("remote") or {}).get("ok")),
+            "output": format_fleet_status(st),
+            "via": "bridge.isaac_fleet",
+            "status": st,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "via": "bridge.isaac_fleet"}
+
+
 def status() -> dict[str, Any]:
     return {
         "enabled": bridge_enabled(),
@@ -362,5 +448,7 @@ def status() -> dict[str, Any]:
         "github_token": bool(_github_token()),
         "grok_flag": (os.getenv("ISAAC_GROK_AGENT_ENABLED") or "0").strip() in {"1", "true", "yes", "on"},
         "copilot_flag": (os.getenv("ISAAC_COPILOT_AGENT_ENABLED") or "0").strip()
+        in {"1", "true", "yes", "on"},
+        "remote_flag": (os.getenv("ISAAC_REMOTE_BRIDGE_ENABLED") or "0").strip()
         in {"1", "true", "yes", "on"},
     }
